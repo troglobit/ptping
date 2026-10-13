@@ -45,6 +45,11 @@ void ptp_port_id_from_mac(struct ptp_port_id *pid, const uint8_t mac[6],
 
 int ptp_port_id_cmp(const struct ptp_port_id *a, const struct ptp_port_id *b);
 
+/* Wire form: clockIdentity followed by big-endian portNumber. */
+#define PTP_PORT_ID_LEN 10
+void ptp_port_id_put(uint8_t *buf, const struct ptp_port_id *pid);
+void ptp_port_id_get(const uint8_t *buf, struct ptp_port_id *pid);
+
 /* "0011223344556677.1", for logging. buf must hold PTP_PORT_ID_STRLEN. */
 #define PTP_PORT_ID_STRLEN 24
 const char *ptp_port_id_str(const struct ptp_port_id *pid, char *buf);

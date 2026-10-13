@@ -40,8 +40,7 @@ int ptp_sync_build(uint8_t *buf, size_t len, const struct ptp_port_id *src,
 	put16(buf + OFF_LENGTH, len);
 	buf[OFF_DOMAIN] = domain;
 	put16(buf + OFF_FLAGS, PTP_FLAGS_SYNC);
-	memcpy(buf + OFF_SRC_PORT, src->clock_id, sizeof(src->clock_id));
-	put16(buf + OFF_SRC_PORT + 8, src->port);
+	ptp_port_id_put(buf + OFF_SRC_PORT, src);
 	put16(buf + OFF_SEQ, seq);
 	buf[OFF_LOG_IVAL] = 0x7f;
 
@@ -70,8 +69,7 @@ int ptp_sync_parse(const uint8_t *buf, size_t len, struct ptp_sync *sync)
 		return -1;
 
 	sync->domain = buf[OFF_DOMAIN];
-	memcpy(sync->src.clock_id, buf + OFF_SRC_PORT, sizeof(sync->src.clock_id));
-	sync->src.port = get16(buf + OFF_SRC_PORT + 8);
+	ptp_port_id_get(buf + OFF_SRC_PORT, &sync->src);
 	sync->seq = get16(buf + OFF_SEQ);
 	sync->correction = (int64_t)get64(buf + OFF_CORR);
 	return 0;
@@ -90,6 +88,18 @@ void ptp_port_id_from_mac(struct ptp_port_id *pid, const uint8_t mac[6],
 	pid->clock_id[4] = 0xfe;
 	memcpy(pid->clock_id + 5, mac + 3, 3);
 	pid->port = port;
+}
+
+void ptp_port_id_put(uint8_t *buf, const struct ptp_port_id *pid)
+{
+	memcpy(buf, pid->clock_id, sizeof(pid->clock_id));
+	put16(buf + 8, pid->port);
+}
+
+void ptp_port_id_get(const uint8_t *buf, struct ptp_port_id *pid)
+{
+	memcpy(pid->clock_id, buf, sizeof(pid->clock_id));
+	pid->port = get16(buf + 8);
 }
 
 int ptp_port_id_cmp(const struct ptp_port_id *a, const struct ptp_port_id *b)

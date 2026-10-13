@@ -4,6 +4,8 @@ AM_CPPFLAGS = -I$(top_srcdir)/src
 noinst_LIBRARIES = libtaping.a
 libtaping_a_SOURCES = \
 	src/be.h \
+	src/ctrl.c \
+	src/ctrl.h \
 	src/log.h \
 	src/ptp.c \
 	src/ptp.h \
@@ -14,10 +16,11 @@ libtaping_a_SOURCES = \
 bin_PROGRAMS = taping
 taping_SOURCES = src/taping.c src/taping.h
 
-check_PROGRAMS = test/ptp-test test/stats-test
+check_PROGRAMS = test/ctrl-test test/ptp-test test/stats-test
 TESTS = $(check_PROGRAMS)
 LDADD = libtaping.a -lm
 
+test_ctrl_test_SOURCES = test/ctrl-test.c test/test.h
 test_ptp_test_SOURCES = test/ptp-test.c test/test.h
 test_stats_test_SOURCES = test/stats-test.c test/test.h
 
