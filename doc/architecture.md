@@ -339,7 +339,7 @@ timestamp; min, max, running mean and variance (Welford) for mdev;
 and a log-linear histogram for percentiles. The histogram has one
 bucket per power of two of nanoseconds, split into 128 linear
 sub-buckets, giving better than 1 % resolution from 1 ns up to days,
-in a fixed 48 kB of memory. Percentiles are read by walking the
+in a fixed 58 kB of memory. Percentiles are read by walking the
 buckets. This is the usual HdrHistogram layout, cut down to what is
 needed.
 

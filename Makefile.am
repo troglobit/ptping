@@ -7,16 +7,18 @@ libtaping_a_SOURCES = \
 	src/log.h \
 	src/ptp.c \
 	src/ptp.h \
+	src/stats.c \
+	src/stats.h \
 	src/tspec.h
 
 bin_PROGRAMS = taping
 taping_SOURCES = src/taping.c src/taping.h
-taping_LDADD = libtaping.a
 
-check_PROGRAMS = test/ptp-test
+check_PROGRAMS = test/ptp-test test/stats-test
 TESTS = $(check_PROGRAMS)
-LDADD = libtaping.a
+LDADD = libtaping.a -lm
 
 test_ptp_test_SOURCES = test/ptp-test.c test/test.h
+test_stats_test_SOURCES = test/stats-test.c test/test.h
 
 EXTRA_DIST = autogen.sh README.md doc/architecture.md
