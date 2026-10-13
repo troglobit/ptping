@@ -29,6 +29,7 @@ struct opts {
 };
 
 int cmd_sink(struct opts *opts);
+int cmd_probe(struct opts *opts);
 int cmd_stat(struct opts *opts);
 
 #endif
