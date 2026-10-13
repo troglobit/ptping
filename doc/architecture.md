@@ -280,8 +280,12 @@ The source is an event loop around `poll()` with these descriptors:
 - the probe socket (readable for reverse probes and, with `POLLERR`,
   for transmission timestamps on the error queue),
 - a `timerfd` driving transmission,
-- a `timerfd` for the periodic report and the loss timeout sweep,
-- a `signalfd` for SIGINT and SIGTERM.
+- a `timerfd` for the periodic report.
+
+SIGINT and SIGTERM set a counter that the loop checks on every
+wake-up: the first stops sending and starts the drain, the second
+ends the run at once. The loss timeout sweep also runs on every
+wake-up, since it only ever looks at the oldest sample of each flow.
 
 ### Flows
 
@@ -291,7 +295,9 @@ was created. A sample is created when the probe is sent (forward) or
 when the first of its timestamps arrives (reverse). When the second
 timestamp arrives the sample is resolved and handed to the consumer.
 The sweep marks samples older than the loss timeout (`-W`, default
-1 s) as lost, resolving them with the missing fields unset.
+1 s) as lost, resolving them with the missing fields unset. Once
+sending is over, the source drains for one more loss timeout, or
+until nothing is outstanding when the count was finite.
 
 The consumer is a callback that gets samples in sequence order. The
 flow holds back a resolved sample until all lower sequence numbers
@@ -415,8 +421,8 @@ Code layout
       log.h       err/warn/info/debug to stderr, -v controls level
       tspec.h     int64 ns helpers, timespec conversion
     test/
-      unit tests for ptp.c, ctrl.c, flow.c and stats.c, run by
-      `make check`
+      unit tests for ptp.c, ctrl.c, flow.c, stats.c, netif.c and
+      ts.c, run by `make check`
       e2e.sh: two network namespaces joined by a veth pair, software
       timestamping, runs probe, stat and record end to end
 
