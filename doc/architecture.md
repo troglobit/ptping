@@ -157,15 +157,13 @@ If this fails and `--timestamping` is `hw`, the command fails with a
 message naming the interface. With `any`, it falls back to software
 timestamps and says so. With `sw`, the ioctl is never attempted.
 
-The interface is found as follows:
-
-- Source: `connect()` an unbound UDP socket to the sink address and
-  read the local address back with `getsockname()`, then match it
-  against `getifaddrs()`. A link-local address carries the interface
-  in its scope id directly.
-- Sink: the local address of the accepted control connection, matched
-  the same way. The control connection and the probes share a path,
-  so this is the interface the probes arrive on.
+The interface is found the same way on both ends: `connect()` an
+unbound UDP socket to the peer, the sink address on the source and
+the control connection's peer address on the sink, read the local
+address back with `getsockname()`, and match it against
+`getifaddrs()`. A link-local address carries the interface in its
+scope id directly. The control connection and the probes share a
+path, so this is the interface the probes cross.
 
 ### Clocks
 

@@ -2,6 +2,10 @@
 #define TAPING_SCHED_H
 
 #include <stdint.h>
+#include <sys/timerfd.h>
+
+#include "log.h"
+#include "tspec.h"
 
 /* When is the next probe due? Today: a fixed rate. Due times step by
  * exact integer periods from the start, so the rate does not drift
@@ -24,6 +28,16 @@ static inline int64_t sched_next(struct sched *s)
 
 	s->next += s->period_ns;
 	return due;
+}
+
+/* Make the timerfd, which must use the schedule's clock, expire at
+ * the next due time. */
+static inline void sched_arm(struct sched *s, int timerfd)
+{
+	struct itimerspec its = { .it_value = ts_to_timespec(sched_next(s)) };
+
+	if (timerfd_settime(timerfd, TFD_TIMER_ABSTIME, &its, NULL))
+		err_errno("timerfd_settime");
 }
 
 #endif

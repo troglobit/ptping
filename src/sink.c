@@ -129,14 +129,6 @@ static void batch_add(struct session *s, enum ctrl_kind kind, uint64_t seq,
 		batch_flush(s);
 }
 
-static void rev_arm(struct session *s)
-{
-	struct itimerspec its = { .it_value = ts_to_timespec(sched_next(&s->sched)) };
-
-	if (timerfd_settime(s->rev_timer, TFD_TIMER_ABSTIME, &its, NULL))
-		err_errno("timerfd_settime");
-}
-
 static void rev_send(struct session *s)
 {
 	uint64_t expirations;
@@ -152,7 +144,7 @@ static void rev_send(struct session *s)
 	if (s->rev_left && !--s->rev_left)
 		return;
 
-	rev_arm(s);
+	sched_arm(&s->sched, s->rev_timer);
 }
 
 static void rev_txts(struct session *s)
@@ -204,7 +196,7 @@ static int rev_open(struct sink *sink, struct session *s,
 
 	s->rev_left = hello->rev.count;
 	sched_init(&s->sched, ts_now(CLOCK_MONOTONIC), hello->rev.period_ns);
-	rev_arm(s);
+	sched_arm(&s->sched, s->rev_timer);
 	return 0;
 }
 
@@ -213,8 +205,8 @@ static int rev_open(struct sink *sink, struct session *s,
 static int session_start(struct sink *sink, struct session *s,
 			 const struct ctrl_hello *hello, char *reason)
 {
-	struct sockaddr_storage local;
-	socklen_t llen = sizeof(local);
+	struct sockaddr_storage local, peer;
+	socklen_t llen = sizeof(local), plen = sizeof(peer);
 	char astr[ADDR_STRLEN], pstr[PTP_PORT_ID_STRLEN];
 	struct netif ni;
 	int mode;
@@ -226,9 +218,10 @@ static int session_start(struct sink *sink, struct session *s,
 	}
 
 	if (getsockname(s->ctrl.fd, (struct sockaddr *)&local, &llen) ||
-	    netif_from_local((struct sockaddr *)&local, &ni)) {
-		sprintf(reason, "no interface for %s",
-			addr_str((struct sockaddr *)&local, astr));
+	    getpeername(s->ctrl.fd, (struct sockaddr *)&peer, &plen) ||
+	    netif_to_remote((struct sockaddr *)&peer, plen, &ni)) {
+		sprintf(reason, "no interface towards %s",
+			addr_str((struct sockaddr *)&peer, astr));
 		return -1;
 	}
 
@@ -246,7 +239,7 @@ static int session_start(struct sink *sink, struct session *s,
 	s->mode = mode;
 	s->src = hello->src;
 	s->domain = hello->domain;
-	ptp_port_id_from_mac(&s->self, ni.mac, getpid() % 65535 + 1);
+	ptp_port_id_self(&s->self, ni.mac);
 
 	if ((hello->flags & CTRL_HELLO_BIDIR) &&
 	    rev_open(sink, s, hello, &local, llen, reason))
@@ -343,24 +336,11 @@ static void session_accept(struct sink *sink)
 
 static void sink_probes(struct sink *sink)
 {
-	uint8_t buf[2048], cbuf[256];
-	struct iovec iov = { buf, sizeof(buf) };
-	struct msghdr msg = {
-		.msg_iov = &iov, .msg_iovlen = 1,
-		.msg_control = cbuf,
-	};
 	struct ptp_sync sync;
 	struct session *s;
-	ssize_t n;
+	int64_t rx_ts;
 
-	for (;;) {
-		msg.msg_controllen = sizeof(cbuf);
-		n = recvmsg(sink->udp_fd, &msg, MSG_DONTWAIT);
-		if (n < 0)
-			return;
-		if (ptp_sync_parse(buf, n, &sync))
-			continue;
-
+	while (ptp_recv_sync(sink->udp_fd, &sync, &rx_ts) > 0) {
 		s = session_find(sink, sync.domain, &sync.src);
 		if (!s) {
 			dbg("probe from unknown source, domain %u", sync.domain);
@@ -368,8 +348,7 @@ static void sink_probes(struct sink *sink)
 		}
 
 		s->fwd_seq = ptp_seq_extend(s->fwd_seq, sync.seq);
-		batch_add(s, CTRL_KIND_RX, s->fwd_seq, ts_from_msghdr(&msg),
-			  sync.correction);
+		batch_add(s, CTRL_KIND_RX, s->fwd_seq, rx_ts, sync.correction);
 	}
 }
 

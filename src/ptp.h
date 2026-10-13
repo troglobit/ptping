@@ -43,7 +43,18 @@ uint64_t ptp_seq_extend(uint64_t last, uint16_t seq);
 void ptp_port_id_from_mac(struct ptp_port_id *pid, const uint8_t mac[6],
 			  uint16_t port);
 
+/* This process's identity on an interface: the EUI-64 of its MAC
+ * address, and a port number from the pid so that several processes
+ * on one host can be told apart. */
+void ptp_port_id_self(struct ptp_port_id *pid, const uint8_t mac[6]);
+
 int ptp_port_id_cmp(const struct ptp_port_id *a, const struct ptp_port_id *b);
+
+/* Take one Sync message off a UDP socket, with its reception
+ * timestamp (TS_NONE if the kernel gave none). Datagrams that are not
+ * Sync messages are skipped. Returns 1 if sync was filled, 0 if the
+ * socket is empty, or -1 on error. */
+int ptp_recv_sync(int fd, struct ptp_sync *sync, int64_t *rx_ts);
 
 /* Wire form: clockIdentity followed by big-endian portNumber. */
 #define PTP_PORT_ID_LEN 10
