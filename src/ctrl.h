@@ -108,6 +108,8 @@ struct ctrl_conn {
 	size_t len;
 };
 
+/* Takes over fd, and on a TCP socket turns on keepalive with a short
+ * interval, so a dead peer is noticed within seconds. */
 void ctrl_conn_init(struct ctrl_conn *c, int fd);
 
 /* Write a whole message, blocking. Returns 0 or -1 with errno set. */

@@ -1,11 +1,13 @@
 #include <errno.h>
 #include <ifaddrs.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netpacket/packet.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "log.h"
 #include "netif.h"
 
 static int sa_equal(const struct sockaddr *a, const struct sockaddr *b)
@@ -96,4 +98,56 @@ int netif_to_remote(const struct sockaddr *sa, socklen_t len, struct netif *ni)
 
 	close(fd);
 	return ret;
+}
+
+int addr_resolve(const char *host, uint16_t port, struct sockaddr_storage *ss,
+		 socklen_t *len)
+{
+	struct addrinfo *ai, hints = {
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_DGRAM,
+		.ai_flags = AI_ADDRCONFIG,
+	};
+	int err;
+
+	err = getaddrinfo(host, NULL, &hints, &ai);
+	if (err) {
+		err("%s: %s", host, gai_strerror(err));
+		return -1;
+	}
+
+	memcpy(ss, ai->ai_addr, ai->ai_addrlen);
+	*len = ai->ai_addrlen;
+	freeaddrinfo(ai);
+	addr_set_port(ss, port);
+	return 0;
+}
+
+void addr_set_port(struct sockaddr_storage *ss, uint16_t port)
+{
+	if (ss->ss_family == AF_INET)
+		((struct sockaddr_in *)ss)->sin_port = htons(port);
+	else
+		((struct sockaddr_in6 *)ss)->sin6_port = htons(port);
+}
+
+int sock_set_dscp(int fd, int family, uint8_t dscp)
+{
+	int tos = dscp << 2;
+
+	if (family == AF_INET)
+		return setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
+
+	return setsockopt(fd, IPPROTO_IPV6, IPV6_TCLASS, &tos, sizeof(tos));
+}
+
+const char *addr_str(const struct sockaddr *sa, char *buf)
+{
+	socklen_t len = sa->sa_family == AF_INET ?
+		sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+
+	if (getnameinfo(sa, len, buf, ADDR_STRLEN, NULL, 0, NI_NUMERICHOST))
+		snprintf(buf, ADDR_STRLEN, "?");
+
+	return buf;
 }

@@ -22,6 +22,7 @@ static const char *usage_text =
 "Common options:\n"
 "  -T, --timestamping hw|sw|any  Timestamping requirement (default: hw)\n"
 "  -D, --domain N                PTP domain (default: 254)\n"
+"  -p, --port N                  Probe and control port (default: 319)\n"
 "  -v, --verbose                 More output, repeat for even more\n"
 "  -h, --help                    This text\n"
 "  -V, --version                 Print version and exit\n"
@@ -82,6 +83,7 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 	static const struct option longopts[] = {
 		{ "timestamping", required_argument, NULL, 'T' },
 		{ "domain",       required_argument, NULL, 'D' },
+		{ "port",         required_argument, NULL, 'p' },
 		{ "verbose",      no_argument,       NULL, 'v' },
 		{ "help",         no_argument,       NULL, 'h' },
 		{ "version",      no_argument,       NULL, 'V' },
@@ -97,7 +99,7 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 	};
 	int c;
 
-	while ((c = getopt_long(argc, argv, "T:D:vhVbc:d:i:r:s:W:",
+	while ((c = getopt_long(argc, argv, "T:D:p:vhVbc:d:i:r:s:W:",
 				longopts, NULL)) != -1) {
 		switch (c) {
 		case 'T':
@@ -108,6 +110,9 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 			break;
 		case 'D':
 			opts->domain = parse_ulong("--domain", optarg, 0, 255);
+			break;
+		case 'p':
+			opts->port = parse_ulong("--port", optarg, 1, 65535);
 			break;
 		case 'v':
 			log_level++;
@@ -155,6 +160,7 @@ static const struct {
 	const char *name;
 	int (*fn)(struct opts *);
 } cmds[] = {
+	{ "sink", cmd_sink },
 	{ "stat", cmd_stat },
 	{ NULL }
 };
@@ -164,6 +170,7 @@ int main(int argc, char **argv)
 	struct opts opts = {
 		.ts_mode = TS_MODE_HW,
 		.domain = 254,
+		.port = TAPING_PORT,
 		.dscp = 40, /* CS5 */
 		.period_ns = NS_PER_S / 100,
 		.report_ns = NS_PER_S,

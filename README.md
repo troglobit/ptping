@@ -133,6 +133,13 @@ Common options:
 
       By default, operate in domain 254.
 
+  -p, --port N
+      Use port N for probes and for the control connection. Hardware
+      only recognizes PTP on port 319, so this is for testing with
+      software timestamps, where it allows running without root.
+
+      By default, port 319 is used.
+
 Commands:
   sink [<sink-options>] [<BIND-ADDRESS>]
       Listen for connections from sources on <BIND-ADDRESS>, if

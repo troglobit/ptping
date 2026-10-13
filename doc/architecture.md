@@ -355,19 +355,26 @@ The sink is the same kind of `poll()` loop with:
 
 - the listening TCP socket,
 - one UDP socket on port 319 (dual-stack IPv6 unless the bind address
-  is IPv4), readable for probes and `POLLERR` for reverse-flow
-  transmission timestamps,
+  is IPv4), which only ever receives,
 - one control connection per session,
-- one transmission `timerfd` per session with a reverse flow,
-- one `timerfd` for TS batch flushing.
+- per session with a reverse flow, a transmission `timerfd` and a
+  UDP socket of its own, bound to an ephemeral port and connected to
+  the source, which carries the reverse probes and reports their
+  transmission timestamps. A socket per flow is what makes the
+  kernel's send counter equal to the sequence number. Reverse probes
+  therefore come from an ephemeral port, so the source must not
+  connect its probe socket.
 
-Sessions live in a table keyed by sourcePortIdentity. A received
-probe is parsed with `ptp.c`, dropped unless domainNumber matches and
-the sourcePortIdentity is known, extended to a 64-bit sequence
-number, and appended to the session's forward-rx batch along with the
-reception timestamp and correctionField. Reverse probes carry the
-sink's own sourcePortIdentity and the session's address as
-destination; their tx timestamps go to the reverse-tx batch.
+Batch flushing and the HELLO timeout need no timer of their own; the
+poll timeout is computed from the nearest deadline.
+
+Sessions live in a table keyed by domain and sourcePortIdentity. A
+received probe is parsed with `ptp.c`, dropped unless it maps to a
+session, extended to a 64-bit sequence number, and appended to the
+session's forward-rx batch along with the reception timestamp and
+correctionField. Reverse probes carry the sink's own
+sourcePortIdentity and go to the control connection's peer address on
+the probe port; their tx timestamps go to the reverse-tx batch.
 
 The sink has no notion of samples or loss. It reports what it sees
 and leaves the pairing to the source, which keeps the sink stateless
@@ -375,9 +382,14 @@ across source restarts and keeps the protocol one-directional for
 data.
 
 The sink runs without a bind address by default and configures
-hardware timestamping lazily per interface, when the first session
-arrives on it. Interfaces already configured are remembered so the
-ioctl runs once.
+hardware timestamping per interface when a session arrives on it. An
+interface already configured is left alone, so repeating this per
+session costs one ioctl.
+
+The shared receive socket asks for both hardware and software
+timestamps, since sessions on different interfaces may differ in
+ability; the hardware one is used when present. A session's mode is
+whatever its interface could provide, and is reported in WELCOME.
 
 
 Code layout

@@ -1,5 +1,5 @@
 AM_CFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter
-AM_CPPFLAGS = -I$(top_srcdir)/src
+AM_CPPFLAGS = -I$(top_srcdir)/src -D_GNU_SOURCE
 
 noinst_LIBRARIES = libtaping.a
 libtaping_a_SOURCES = \
@@ -22,7 +22,7 @@ libtaping_a_SOURCES = \
 	src/tspec.h
 
 bin_PROGRAMS = taping
-taping_SOURCES = src/taping.c src/taping.h
+taping_SOURCES = src/sink.c src/taping.c src/taping.h
 
 check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test test/ts-test
 TESTS = $(check_PROGRAMS)

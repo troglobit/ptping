@@ -124,12 +124,10 @@ int ts_setup_sock(int fd, enum ts_mode mode)
 	int flags = SOF_TIMESTAMPING_OPT_CMSG | SOF_TIMESTAMPING_OPT_ID |
 		SOF_TIMESTAMPING_OPT_TSONLY;
 
-	/* Only one kind is requested, so at most one slot of the
-	 * report is ever filled and the readers need not know which. */
-	if (mode == TS_MODE_HW)
+	if (mode != TS_MODE_SW)
 		flags |= SOF_TIMESTAMPING_RX_HARDWARE | SOF_TIMESTAMPING_TX_HARDWARE |
 			SOF_TIMESTAMPING_RAW_HARDWARE;
-	else
+	if (mode != TS_MODE_HW)
 		flags |= SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_TX_SOFTWARE |
 			SOF_TIMESTAMPING_SOFTWARE;
 

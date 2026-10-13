@@ -1,4 +1,6 @@
 #include <errno.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -151,8 +153,16 @@ ssize_t ctrl_decode(const uint8_t *buf, size_t len, struct ctrl_msg *msg)
 
 void ctrl_conn_init(struct ctrl_conn *c, int fd)
 {
+	int one = 1, idle = 2, intvl = 1, cnt = 3;
+
 	c->fd = fd;
 	c->len = 0;
+
+	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+	setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+	setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof(intvl));
+	setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 }
 
 int ctrl_send(struct ctrl_conn *c, const struct ctrl_msg *msg)
