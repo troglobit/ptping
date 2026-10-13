@@ -166,6 +166,7 @@ static const struct cmd cmds[] = {
 	{ "sink",   cmd_sink,   0, 1 },
 	{ "probe",  cmd_probe,  1, 1 },
 	{ "stat",   cmd_stat,   1, 1 },
+	{ "record", cmd_record, 1, 2 },
 	{ NULL }
 };
 

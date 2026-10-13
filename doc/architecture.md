@@ -330,9 +330,9 @@ deliberately just "next due time" so that change stays local.
   itself in place; otherwise one report is printed per interval. The
   final report on exit covers the whole run.
 
-- `record` writes one CSV line per sample, in sequence order, with
-  the header `flow,seq,tx_ns,rx_ns,correction,latency_ns`. Missing
-  fields are empty. Lines are flushed as samples resolve.
+- `record` writes one CSV line per sample, in sequence order within
+  each flow, with the header `flow,seq,tx_ns,rx_ns,correction,latency_ns`.
+  Missing fields are empty. Lines are flushed every report interval.
 
 ### Statistics
 

@@ -22,7 +22,7 @@ libtaping_a_SOURCES = \
 	src/tspec.h
 
 bin_PROGRAMS = taping
-taping_SOURCES = src/probe.c src/sink.c src/source.c src/source.h src/stat.c src/taping.c src/taping.h
+taping_SOURCES = src/probe.c src/record.c src/sink.c src/source.c src/source.h src/stat.c src/taping.c src/taping.h
 
 check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test test/ts-test
 TESTS = $(check_PROGRAMS)
