@@ -10,8 +10,6 @@
 
 #include "config.h"
 
-int log_level = LOG_WARN;
-
 static const char *usage_text =
 "usage: taping [<common-options>] <command> [<command-options-and-arguments>]\n"
 "\n"
@@ -79,18 +77,6 @@ static uint8_t parse_dscp(const char *arg)
 	return parse_ulong("--dscp", arg, 0, 63);
 }
 
-static enum ts_mode parse_ts_mode(const char *arg)
-{
-	if (!strcmp(arg, "hw"))
-		return TS_MODE_HW;
-	if (!strcmp(arg, "sw"))
-		return TS_MODE_SW;
-	if (!strcmp(arg, "any"))
-		return TS_MODE_ANY;
-
-	die("--timestamping: expected hw, sw or any, got \"%s\"", arg);
-}
-
 static void opts_parse(struct opts *opts, int argc, char **argv)
 {
 	static const struct option longopts[] = {
@@ -115,7 +101,10 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 				longopts, NULL)) != -1) {
 		switch (c) {
 		case 'T':
-			opts->ts_mode = parse_ts_mode(optarg);
+			c = ts_mode_parse(optarg);
+			if (c < 0)
+				die("--timestamping: expected hw, sw or any, got \"%s\"", optarg);
+			opts->ts_mode = c;
 			break;
 		case 'D':
 			opts->domain = parse_ulong("--domain", optarg, 0, 255);

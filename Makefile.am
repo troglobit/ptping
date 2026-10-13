@@ -8,6 +8,7 @@ libtaping_a_SOURCES = \
 	src/ctrl.h \
 	src/flow.c \
 	src/flow.h \
+	src/log.c \
 	src/log.h \
 	src/netif.c \
 	src/netif.h \
@@ -16,12 +17,14 @@ libtaping_a_SOURCES = \
 	src/sched.h \
 	src/stats.c \
 	src/stats.h \
+	src/ts.c \
+	src/ts.h \
 	src/tspec.h
 
 bin_PROGRAMS = taping
 taping_SOURCES = src/taping.c src/taping.h
 
-check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test
+check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test test/ts-test
 TESTS = $(check_PROGRAMS)
 LDADD = libtaping.a -lm
 
@@ -30,5 +33,6 @@ test_flow_test_SOURCES = test/flow-test.c test/test.h
 test_netif_test_SOURCES = test/netif-test.c test/test.h
 test_ptp_test_SOURCES = test/ptp-test.c test/test.h
 test_stats_test_SOURCES = test/stats-test.c test/test.h
+test_ts_test_SOURCES = test/ts-test.c test/test.h
 
 EXTRA_DIST = autogen.sh README.md doc/architecture.md

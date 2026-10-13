@@ -4,11 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum ts_mode {
-	TS_MODE_HW,
-	TS_MODE_SW,
-	TS_MODE_ANY,
-};
+#include "ts.h"
 
 /* Everything the command line can say, for all commands. Each command
  * reads the fields that apply to it. */

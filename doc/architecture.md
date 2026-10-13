@@ -123,17 +123,21 @@ All timestamping goes through `SO_TIMESTAMPING`; see `ts.c`. The
 following applies to any socket that sends or receives probes, on both
 hosts:
 
-- Reception: `SOF_TIMESTAMPING_RX_HARDWARE | RX_SOFTWARE |
-  RAW_HARDWARE | SOFTWARE`. The timestamp arrives in a
-  `SCM_TIMESTAMPING` control message; index 2 is the raw hardware
-  timestamp, index 0 the software one.
+- A socket asks for one kind of timestamp only, hardware or
+  software, for both reception and transmission. Requesting both
+  would fill two slots of every report and queue two transmission
+  reports per packet, for no benefit once the mode is decided.
 
-- Transmission: `SOF_TIMESTAMPING_TX_HARDWARE | TX_SOFTWARE`, plus
-  `OPT_CMSG` so the timestamp is reported with the original packet.
-  The timestamp is read from `MSG_ERRQUEUE`, and the sequenceId is
-  parsed from the looped-back packet to pair it with the probe. The
-  `OPT_ID` counter would do as well, but parsing keeps the pairing
-  independent of what else is sent on the socket.
+- Reception timestamps arrive in a `SCM_TIMESTAMPING` control
+  message; index 2 is the raw hardware timestamp, index 0 the
+  software one, and only one of them is ever filled.
+
+- Transmission timestamps are reported on `MSG_ERRQUEUE`. `OPT_ID`
+  and `OPT_TSONLY` make the kernel report a per-socket send counter
+  instead of a copy of the packet. Probe sockets send nothing but
+  probes, so that counter is the sequence number. This is simpler
+  than parsing the looped-back packet, whose headers depend on the
+  link type, and does not depend on `net.core.tstamp_allow_data`.
 
 Hardware timestamping is a per-interface setting, `SIOCSHWTSTAMP`. On
 startup, and on the sink whenever a new session arrives on a
