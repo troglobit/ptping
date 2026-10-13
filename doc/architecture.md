@@ -93,7 +93,9 @@ single PAD TLV (tlvType 0x8008, IEEE 1588-2019) appended to the Sync
 message; messageLength covers the TLV. Using a real TLV rather than
 trailing garbage keeps the message valid to hardware that parses it
 before timestamping. The smallest frame is 90 bytes over IPv4 and 110
-over IPv6. `--size` below the minimum is an error.
+over IPv6, a bare Sync. The next possible size is four bytes larger,
+since the TLV header is four bytes, and from there every even size
+works. Anything else is an error.
 
 ### Sequence numbers
 

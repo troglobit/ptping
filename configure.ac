@@ -6,6 +6,8 @@ AM_INIT_AUTOMAKE([1.11 foreign subdir-objects -Wall -Werror])
 AM_SILENT_RULES([yes])
 
 AC_PROG_CC
+AM_PROG_AR
+AC_PROG_RANLIB
 AC_USE_SYSTEM_EXTENSIONS
 
 AC_CHECK_HEADERS([linux/net_tstamp.h linux/ptp_clock.h linux/sockios.h], [],
