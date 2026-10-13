@@ -11,6 +11,7 @@ libtaping_a_SOURCES = \
 	src/log.h \
 	src/ptp.c \
 	src/ptp.h \
+	src/sched.h \
 	src/stats.c \
 	src/stats.h \
 	src/tspec.h

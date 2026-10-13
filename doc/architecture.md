@@ -305,9 +305,9 @@ network one.
 
 ### Transmission schedule
 
-`sched.c` answers one question: when is the next probe due? Today it
-implements a fixed rate: `next = start + n * interval`, computed from
-the start time rather than from the previous transmission so the rate
+`sched.h` answers one question: when is the next probe due? Today it
+implements a fixed rate, stepping by exact integer periods from the
+start time rather than from the previous transmission, so the rate
 does not drift. The 802.1Qbv cyclical schedule will be a second
 implementation behind the same interface, and will likely move from
 `timerfd` to `SO_TXTIME` with the `etf` qdisc; the interface is
@@ -394,7 +394,7 @@ Code layout
       ts.c/h      SO_TIMESTAMPING setup, SIOCGHWTSTAMP/SIOCSHWTSTAMP
                   negotiation, cmsg and error queue parsing
       netif.c/h   interface lookup from a local address, MAC address
-      sched.c/h   next transmission time; fixed rate today
+      sched.h     next transmission time; fixed rate today
       flow.c/h    per-flow sample table, loss timeout, in-order
                   delivery to the consumer
       stats.c/h   counters, min/max/mean/mdev, histogram, percentiles
