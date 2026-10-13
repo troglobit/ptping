@@ -456,9 +456,6 @@ int cmd_sink(struct opts *opts)
 	struct sigaction sa = { .sa_handler = on_signal };
 	unsigned i;
 
-	if (opts->argc > 1)
-		die("sink takes at most one bind address");
-
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 

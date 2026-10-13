@@ -193,6 +193,11 @@ Source options:
 
       By default, CS5 is used.
 
+  -i, --interval <seconds>
+      Print a `stat` report every <seconds>.
+
+      By default, one is printed every second.
+
   -r, --rate <rate>
       Send <rate> packets per second.
 
@@ -210,6 +215,12 @@ Source options:
 
       By default, the smallest frame that fits a Sync message is used:
       90 bytes over IPv4, 110 bytes over IPv6.
+
+  -W, --timeout <seconds>
+      Consider a probe lost if its reception timestamp has not arrived
+      within <seconds> of sending it.
+
+      By default, 1 second.
 ```
 
 Building

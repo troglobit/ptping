@@ -405,9 +405,6 @@ int source_run(struct source *src, struct opts *opts,
 	unsigned i;
 	int ret = 1;
 
-	if (opts->argc < 1)
-		die("missing sink address");
-
 	*src = (struct source){
 		.opts = opts,
 		.ops = ops,

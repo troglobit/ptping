@@ -156,14 +156,29 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 	opts->argv = argv + optind;
 }
 
-static const struct {
+struct cmd {
 	const char *name;
 	int (*fn)(struct opts *);
-} cmds[] = {
-	{ "sink", cmd_sink },
-	{ "stat", cmd_stat },
+	int min_args, max_args;
+};
+
+static const struct cmd cmds[] = {
+	{ "sink",   cmd_sink,   0, 1 },
+	{ "stat",   cmd_stat,   1, 1 },
 	{ NULL }
 };
+
+static const struct cmd *cmd_find(const char *name)
+{
+	const struct cmd *cmd;
+
+	for (cmd = cmds; cmd->name; cmd++) {
+		if (!strcmp(cmd->name, name))
+			return cmd;
+	}
+
+	return NULL;
+}
 
 int main(int argc, char **argv)
 {
@@ -176,25 +191,23 @@ int main(int argc, char **argv)
 		.report_ns = NS_PER_S,
 		.timeout_ns = NS_PER_S,
 	};
-	size_t i;
+	const struct cmd *cmd;
 
 	opts_parse(&opts, argc, argv);
 	if (!opts.argc)
 		usage(1);
 
-	for (i = 0; cmds[i].name; i++) {
-		if (!strcmp(opts.argv[0], cmds[i].name)) {
-			opts.argc--;
-			opts.argv++;
-			return cmds[i].fn(&opts);
-		}
+	cmd = cmd_find(opts.argv[0]);
+	if (cmd) {
+		opts.argc--;
+		opts.argv++;
+	} else {
+		/* "taping [<source-options>] <SINK-ADDRESS>" */
+		cmd = cmd_find("stat");
 	}
 
-	/* No command: "taping [<source-options>] <SINK-ADDRESS>" */
-	return cmd_stat(&opts);
-}
+	if (opts.argc < cmd->min_args || opts.argc > cmd->max_args)
+		usage(1);
 
-int cmd_stat(struct opts *opts)
-{
-	die("not implemented");
+	return cmd->fn(&opts);
 }

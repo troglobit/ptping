@@ -11,6 +11,11 @@
 #define HELLO_LEN 30
 #define WELCOME_FIXED_LEN 14
 
+const char *const ctrl_flow_names[2] = {
+	[CTRL_FLOW_FWD] = "source -> sink",
+	[CTRL_FLOW_REV] = "sink -> source",
+};
+
 static uint8_t *put_text(uint8_t *p, const char *text)
 {
 	size_t n = strnlen(text, CTRL_TEXT_MAX);

@@ -32,6 +32,9 @@ enum ctrl_flow {
 	CTRL_FLOW_REV,		/* sink to source */
 };
 
+/* "source -> sink" and "sink -> source", for messages. */
+extern const char *const ctrl_flow_names[2];
+
 enum ctrl_kind {
 	CTRL_KIND_RX,
 	CTRL_KIND_TX,
