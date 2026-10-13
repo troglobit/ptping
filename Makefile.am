@@ -9,6 +9,8 @@ libtaping_a_SOURCES = \
 	src/flow.c \
 	src/flow.h \
 	src/log.h \
+	src/netif.c \
+	src/netif.h \
 	src/ptp.c \
 	src/ptp.h \
 	src/sched.h \
@@ -19,12 +21,13 @@ libtaping_a_SOURCES = \
 bin_PROGRAMS = taping
 taping_SOURCES = src/taping.c src/taping.h
 
-check_PROGRAMS = test/ctrl-test test/flow-test test/ptp-test test/stats-test
+check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test
 TESTS = $(check_PROGRAMS)
 LDADD = libtaping.a -lm
 
 test_ctrl_test_SOURCES = test/ctrl-test.c test/test.h
 test_flow_test_SOURCES = test/flow-test.c test/test.h
+test_netif_test_SOURCES = test/netif-test.c test/test.h
 test_ptp_test_SOURCES = test/ptp-test.c test/test.h
 test_stats_test_SOURCES = test/stats-test.c test/test.h
 
