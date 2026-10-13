@@ -25,7 +25,7 @@ bin_PROGRAMS = taping
 taping_SOURCES = src/probe.c src/record.c src/sink.c src/source.c src/source.h src/stat.c src/taping.c src/taping.h
 
 check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test test/ts-test
-TESTS = $(check_PROGRAMS)
+TESTS = $(check_PROGRAMS) test/e2e.sh
 LDADD = libtaping.a -lm
 
 test_ctrl_test_SOURCES = test/ctrl-test.c test/test.h
@@ -35,4 +35,4 @@ test_ptp_test_SOURCES = test/ptp-test.c test/test.h
 test_stats_test_SOURCES = test/stats-test.c test/test.h
 test_ts_test_SOURCES = test/ts-test.c test/test.h
 
-EXTRA_DIST = autogen.sh README.md doc/architecture.md
+EXTRA_DIST = autogen.sh README.md doc/architecture.md test/e2e.sh

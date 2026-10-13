@@ -442,13 +442,16 @@ Build and test
 --------------
 
 Autotools, C11, `-Wall -Wextra -Werror`. `configure` checks for the
-Linux headers that define `SO_TIMESTAMPING`, `hwtstamp_config` and
+Linux headers that define `SO_TIMESTAMPING` and
 `SOF_TIMESTAMPING_OPT_CMSG`, and fails on anything else. `make check`
-runs the unit tests and, when run as root, `test/e2e.sh`.
+runs the unit tests and `test/e2e.sh`.
 
-The end-to-end test uses `--timestamping sw` in network namespaces,
-so everything except the hardware timestamping path is exercised on
-any machine. The hardware path is tested by hand on real NICs.
+The end-to-end test uses `--timestamping sw`. As root it joins two
+network namespaces with a veth pair; otherwise it runs both ends on
+loopback, with distinct addresses so both can own the probe port, on
+an unprivileged port. Either way everything except the hardware
+timestamping path is exercised on any machine. The hardware path is
+tested by hand on real NICs.
 
 
 Open questions

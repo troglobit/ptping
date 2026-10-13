@@ -1,0 +1,99 @@
+#!/bin/sh
+# End-to-end test with software timestamps. As root, the sink and the
+# source run in two network namespaces joined by a veth pair; otherwise
+# both run on loopback with distinct addresses and an unprivileged port.
+
+set -e
+
+taping=${TAPING:-./taping}
+tmp=$(mktemp -d)
+sink_pid=
+
+cleanup()
+{
+	[ -n "$sink_pid" ] && kill -INT "$sink_pid" 2>/dev/null && wait "$sink_pid" || true
+	if [ -n "$src_ns" ]; then
+		ip netns del taping-a 2>/dev/null || true
+		ip netns del taping-b 2>/dev/null || true
+	fi
+	rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+fail()
+{
+	echo "FAIL: $*" >&2
+	exit 1
+}
+
+# run <name> <command...>: run a source command, keep its output in
+# $tmp/<name>.log, and fail with that output if it fails.
+run()
+{
+	name=$1
+	shift
+	$src_ns $taping $common "$@" >"$tmp/$name.log" 2>&1 ||
+		fail "$name: $(cat "$tmp/$name.log")"
+}
+
+# refuse <name> <pattern> <command...>: the command must fail and
+# explain itself with a message matching <pattern>.
+refuse()
+{
+	name=$1
+	pattern=$2
+	shift 2
+	$src_ns $taping $common "$@" >"$tmp/$name.log" 2>&1 &&
+		fail "$name: accepted"
+	grep -q "$pattern" "$tmp/$name.log" ||
+		fail "$name: $(cat "$tmp/$name.log")"
+}
+
+if [ "$(id -u)" = 0 ]; then
+	ip netns add taping-a
+	ip netns add taping-b
+	ip link add veth-a netns taping-a type veth peer name veth-b netns taping-b
+	ip -n taping-a addr add 10.0.0.1/24 dev veth-a
+	ip -n taping-b addr add 10.0.0.2/24 dev veth-b
+	ip -n taping-a link set veth-a up
+	ip -n taping-b link set veth-b up
+	ip -n taping-a link set lo up
+	ip -n taping-b link set lo up
+	sink_ns="ip netns exec taping-b"
+	src_ns="ip netns exec taping-a"
+	sink=10.0.0.2
+	common="-T sw -p 319"
+else
+	sink_ns=
+	src_ns=
+	sink=127.0.0.2
+	common="-T sw -p 31900"
+fi
+
+$sink_ns $taping $common sink $sink >"$tmp/sink.log" 2>&1 &
+sink_pid=$!
+sleep 0.3
+
+echo "probe"
+run probe probe -b $sink
+grep -q "source -> sink: latency" "$tmp/probe.log" || fail "probe: no forward latency"
+grep -q "sink -> source: latency" "$tmp/probe.log" || fail "probe: no reverse latency"
+
+echo "stat"
+run stat stat -b -c 100 -r 200 -i 0.2 $sink
+tail -6 "$tmp/stat.log" | grep -q "packets: 100/.*100/.* 0 lost" || fail "stat: $(tail -6 "$tmp/stat.log")"
+
+echo "record"
+run record record -c 20 -r 200 $sink "$tmp/rec.csv"
+[ "$(wc -l <"$tmp/rec.csv")" = 21 ] || fail "record: $(wc -l <"$tmp/rec.csv") lines"
+[ "$(head -1 "$tmp/rec.csv")" = "flow,seq,tx_ns,rx_ns,correction,latency_ns" ] || fail "record: header"
+missing=$(grep -E ",,|,$" "$tmp/rec.csv" || true)
+[ -z "$missing" ] || fail "record: missing fields: $missing"
+[ "$(tail -1 "$tmp/rec.csv" | cut -d, -f1,2)" = "fwd,19" ] || fail "record: last line $(tail -1 "$tmp/rec.csv")"
+
+echo "refusal"
+refuse size "smallest frame" stat -c 1 -s 50 $sink
+refuse hw "no hardware timestamping" -T hw stat -c 1 $sink
+
+echo "sink log:"
+cat "$tmp/sink.log"
