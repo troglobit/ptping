@@ -33,6 +33,14 @@ only relies on them being synchronized:
 - With software timestamping, the system clocks must be synchronized,
   e.g. by `phc2sys(8)` tracking a synchronized PHC.
 
+- With a schedule (see the schedule options), the probes are released
+  by the system clock, so on the host that sends them it must track
+  the PHC, again with `phc2sys(8)`. That is the source, and with
+  `--bidir` the sink too. The UTC offset must be set as well, which
+  `phc2sys -w` does from what `ptp4l` learned, so that `CLOCK_TAI` is
+  the PHC's timescale and not 37 seconds behind it; `ptping` warns
+  when it finds no offset.
+
 As a sanity check of the synchronization, the source can ask the sink
 to send probes in the reverse direction as well (`--bidir`). The sum
 of the two one-way latencies is independent of the clock offset, and
@@ -246,8 +254,9 @@ Schedule options:
 
   All times are in nanoseconds. The schedule is kept in CLOCK_TAI,
   which is the PHC's timescale when ptp4l and phc2sys are running,
-  and the same timescale that tc's taprio uses. The reverse flow of
-  --bidir follows the same schedule.
+  and the same timescale that tc's taprio uses; see "Clock
+  synchronization" above for what the sending host must run. The
+  reverse flow of --bidir follows the same schedule.
 
   --cycle <ns>
       Cycle time of the schedule.
