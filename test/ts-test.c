@@ -32,6 +32,7 @@ static void test_sock(void)
 	};
 	struct pollfd pfd = { .events = POLLERR };
 	int64_t before, ts, tx[2];
+	struct ts_pair rx_ts;
 	uint32_t id;
 	int rx, fd, i;
 
@@ -47,7 +48,7 @@ static void test_sock(void)
 	usleep(50000);
 
 	/* Nothing queued yet. */
-	check(ts_recv_tx(fd, &id, &ts) == 0);
+	check(ts_recv_tx(fd, TS_MODE_SW, &id, &ts) == 0);
 
 	before = ts_now(CLOCK_REALTIME);
 	for (i = 0; i < 2; i++)
@@ -57,18 +58,20 @@ static void test_sock(void)
 	pfd.fd = fd;
 	for (i = 0; i < 2; i++) {
 		check(poll(&pfd, 1, 1000) == 1);
-		check(ts_recv_tx(fd, &id, &tx[i]) == 1);
+		check(ts_recv_tx(fd, TS_MODE_SW, &id, &tx[i]) == 1);
 		check(id == (uint32_t)i);
 		check(tx[i] >= before && tx[i] <= ts_now(CLOCK_REALTIME));
 	}
 	check(tx[1] >= tx[0]);
-	check(ts_recv_tx(fd, &id, &ts) == 0);
+	check(ts_recv_tx(fd, TS_MODE_SW, &id, &ts) == 0);
 
 	/* Reception timestamps. */
 	for (i = 0; i < 2; i++) {
 		msg.msg_controllen = sizeof(cbuf);
 		check(recvmsg(rx, &msg, 0) == 2);
-		ts = ts_from_msghdr(&msg);
+		ts_from_msghdr(&msg, &rx_ts);
+		check(rx_ts.hw == TS_NONE);
+		ts = ts_pick(&rx_ts, TS_MODE_SW);
 		check(ts >= tx[i] && ts <= ts_now(CLOCK_REALTIME));
 	}
 

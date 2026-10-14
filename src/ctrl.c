@@ -53,7 +53,7 @@ size_t ctrl_encode(const struct ctrl_msg *msg, uint8_t *buf)
 	case CTRL_WELCOME:
 		*p++ = CTRL_VERSION;
 		*p++ = msg->welcome.status;
-		*p++ = msg->welcome.tstamp;
+		*p++ = 0;
 		*p++ = 0;
 		ptp_port_id_put(p, &msg->welcome.src);
 		p = put_text(p + PTP_PORT_ID_LEN, msg->welcome.text);
@@ -102,7 +102,7 @@ ssize_t ctrl_decode(const uint8_t *buf, size_t len, struct ctrl_msg *msg)
 
 	switch (msg->type) {
 	case CTRL_HELLO:
-		if (plen != HELLO_LEN || p[0] != CTRL_VERSION)
+		if (plen != HELLO_LEN || p[0] != CTRL_VERSION || p[3] > TS_MODE_SW)
 			return -1;
 		msg->hello.flags = p[1];
 		msg->hello.domain = p[2];
@@ -119,7 +119,6 @@ ssize_t ctrl_decode(const uint8_t *buf, size_t len, struct ctrl_msg *msg)
 		    plen > WELCOME_FIXED_LEN + CTRL_TEXT_MAX || p[0] != CTRL_VERSION)
 			return -1;
 		msg->welcome.status = p[1];
-		msg->welcome.tstamp = p[2];
 		ptp_port_id_get(p + 4, &msg->welcome.src);
 		get_text(p + 4 + PTP_PORT_ID_LEN, plen - WELCOME_FIXED_LEN,
 			 msg->welcome.text);

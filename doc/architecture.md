@@ -153,9 +153,11 @@ previously unseen interface, `taping`:
    `linuxptp` does. Widening an L2-only filter to L2+L4 is harmless
    to a running `ptp4l`.
 
-If this fails and `--timestamping` is `hw`, the command fails with a
-message naming the interface. With `any`, it falls back to software
-timestamps and says so. With `sw`, the ioctl is never attempted.
+On the source, if this fails and `--timestamping` is `hw`, the
+command fails with a message naming the interface. With `any`, it
+falls back to software timestamps and says so. With `sw`, the ioctl
+is never attempted. On the sink the mode comes from HELLO, so a
+hardware session that cannot be served is refused instead.
 
 The interface is found the same way on both ends: `connect()` an
 unbound UDP socket to the peer, the sink address on the source and
@@ -168,10 +170,11 @@ path, so this is the interface the probes cross.
 ### Clocks
 
 Hardware timestamps are in the PHC's timescale, software timestamps
-in `CLOCK_REALTIME`. The sink reports in WELCOME which mode it ended
-up in, and the source refuses the session if the two ends differ,
-unless `--timestamping any` was given. Latency is simply `rx - tx`,
-with no conversion. `taping` never reads the timestamping clocks
+in `CLOCK_REALTIME`. The source resolves its mode on its own
+interface and names it in HELLO; the sink delivers that mode on the
+interface the session arrived on, or refuses. The sink has no mode of
+its own, which is why `--timestamping` is a source option. Latency is
+simply `rx - tx`, with no conversion. `taping` never reads the timestamping clocks
 itself; the loss timeout and all scheduling use `CLOCK_MONOTONIC`.
 
 Timestamps are `int64_t` nanoseconds everywhere, in memory and on the
@@ -205,7 +208,7 @@ four-byte header. All integers are big-endian.
 | Type | Name    | Direction      | Purpose                                 |
 |------|---------|----------------|-----------------------------------------|
 | 1    | HELLO   | source to sink | open a session, describe the flows      |
-| 2    | WELCOME | sink to source | accept or refuse, report sink settings  |
+| 2    | WELCOME | sink to source | accept or refuse                        |
 | 3    | TS      | sink to source | batch of timestamps                     |
 | 4    | BYE     | either         | orderly close                           |
 | 5    | ERROR   | either         | fatal problem, text follows, then close |
@@ -215,7 +218,7 @@ HELLO:
     uint8_t  version;        /* 1 */
     uint8_t  flags;          /* bit 0: bidir */
     uint8_t  domain;
-    uint8_t  tstamp;         /* 0 hw, 1 sw, 2 any */
+    uint8_t  tstamp;         /* 0 hw, 1 sw: the session's mode */
     uint8_t  clock_id[8];    /* source's sourcePortIdentity */
     uint16_t port_number;
     /* reverse flow parameters, ignored unless bidir */
@@ -229,8 +232,7 @@ WELCOME:
 
     uint8_t  version;
     uint8_t  status;         /* 0 ok, otherwise refused, text follows */
-    uint8_t  tstamp;         /* mode in use at the sink: 0 hw, 1 sw */
-    uint8_t  reserved;
+    uint8_t  reserved[2];
     uint8_t  clock_id[8];    /* sink's sourcePortIdentity, for reverse */
     uint16_t port_number;
     char     text[];         /* human-readable reason when refused */
@@ -260,8 +262,7 @@ Session lifecycle:
    the sourcePortIdentity, starts the reverse flow if asked, replies
    WELCOME. On any failure it replies WELCOME with a non-zero status
    and closes.
-3. Source checks the sink's timestamping mode against its own
-   requirement and starts sending.
+3. Source starts sending.
 4. Source stops sending when the count is reached or on SIGINT, waits
    one loss timeout for stragglers, sends BYE, prints its summary.
 5. Sink stops the reverse flow and forgets the session when it reads
@@ -391,9 +392,9 @@ interface already configured is left alone, so repeating this per
 session costs one ioctl.
 
 The shared receive socket asks for both hardware and software
-timestamps, since sessions on different interfaces may differ in
-ability; the hardware one is used when present. A session's mode is
-whatever its interface could provide, and is reported in WELCOME.
+timestamps, and the sink picks the one a probe's session uses. A
+hardware session and a software session can therefore share an
+interface, each with timestamps from the clock the source expects.
 
 
 Code layout

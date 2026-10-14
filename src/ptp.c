@@ -6,7 +6,6 @@
 
 #include "be.h"
 #include "ptp.h"
-#include "ts.h"
 
 #define PTP_VERSION 2
 #define PTP_MSG_SYNC 0
@@ -127,7 +126,7 @@ const char *ptp_port_id_str(const struct ptp_port_id *pid, char *buf)
 	return buf;
 }
 
-int ptp_recv_sync(int fd, struct ptp_sync *sync, int64_t *rx_ts)
+int ptp_recv_sync(int fd, struct ptp_sync *sync, struct ts_pair *rx)
 {
 	uint8_t buf[2048], cbuf[256];
 	struct iovec iov = { buf, sizeof(buf) };
@@ -145,7 +144,7 @@ int ptp_recv_sync(int fd, struct ptp_sync *sync, int64_t *rx_ts)
 		if (ptp_sync_parse(buf, n, sync))
 			continue;
 
-		*rx_ts = ts_from_msghdr(&msg);
+		ts_from_msghdr(&msg, rx);
 		return 1;
 	}
 }

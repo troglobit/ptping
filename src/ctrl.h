@@ -21,12 +21,6 @@ enum ctrl_type {
 #define CTRL_VERSION 1
 #define CTRL_HELLO_BIDIR 0x01
 
-enum ctrl_tstamp {
-	CTRL_TS_HW,
-	CTRL_TS_SW,
-	CTRL_TS_ANY,
-};
-
 enum ctrl_flow {
 	CTRL_FLOW_FWD,		/* source to sink */
 	CTRL_FLOW_REV,		/* sink to source */
@@ -51,7 +45,7 @@ struct ctrl_flow_params {
 struct ctrl_hello {
 	uint8_t flags;
 	uint8_t domain;
-	uint8_t tstamp;		/* enum ctrl_tstamp */
+	uint8_t tstamp;		/* enum ts_mode: the mode the session uses, hw or sw */
 	struct ptp_port_id src;
 	struct ctrl_flow_params rev;	/* only read when flags has BIDIR */
 };
@@ -60,7 +54,6 @@ struct ctrl_hello {
 
 struct ctrl_welcome {
 	uint8_t status;		/* 0: ok, otherwise refused, see text */
-	uint8_t tstamp;		/* CTRL_TS_HW or CTRL_TS_SW, in use at sink */
 	struct ptp_port_id src;	/* sink's identity on reverse probes */
 	char text[CTRL_TEXT_MAX + 1];
 };

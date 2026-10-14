@@ -134,29 +134,33 @@ int ts_setup_sock(int fd, enum ts_mode mode)
 	return setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &flags, sizeof(flags));
 }
 
-int64_t ts_from_msghdr(const struct msghdr *msg)
+static int64_t ts_from_slot(const struct timespec *ts)
+{
+	return (ts->tv_sec || ts->tv_nsec) ? ts_from_timespec(ts) : TS_NONE;
+}
+
+void ts_from_msghdr(const struct msghdr *msg, struct ts_pair *ts)
 {
 	const struct scm_timestamping *tss;
-	const struct timespec *ts;
 	struct cmsghdr *cm;
+
+	ts->hw = ts->sw = TS_NONE;
 
 	for (cm = CMSG_FIRSTHDR(msg); cm; cm = CMSG_NXTHDR((struct msghdr *)msg, cm)) {
 		if (cm->cmsg_level != SOL_SOCKET || cm->cmsg_type != SCM_TIMESTAMPING)
 			continue;
 
 		tss = (const struct scm_timestamping *)CMSG_DATA(cm);
-		ts = &tss->ts[2];	/* raw hardware */
-		if (!ts->tv_sec && !ts->tv_nsec)
-			ts = &tss->ts[0];	/* software */
-		return (ts->tv_sec || ts->tv_nsec) ? ts_from_timespec(ts) : TS_NONE;
+		ts->sw = ts_from_slot(&tss->ts[0]);
+		ts->hw = ts_from_slot(&tss->ts[2]);	/* raw hardware */
+		return;
 	}
-
-	return TS_NONE;
 }
 
-int ts_recv_tx(int fd, uint32_t *id, int64_t *ts)
+int ts_recv_tx(int fd, enum ts_mode mode, uint32_t *id, int64_t *ts)
 {
 	const struct sock_extended_err *ee = NULL;
+	struct ts_pair pair;
 	struct cmsghdr *cm;
 	char cbuf[256];
 	struct msghdr msg = {
@@ -178,7 +182,8 @@ int ts_recv_tx(int fd, uint32_t *id, int64_t *ts)
 		return 0;
 	}
 
+	ts_from_msghdr(&msg, &pair);
 	*id = ee->ee_data;
-	*ts = ts_from_msghdr(&msg);
+	*ts = ts_pick(&pair, mode);
 	return 1;
 }

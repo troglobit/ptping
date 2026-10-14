@@ -124,7 +124,7 @@ static int hello(struct source *src)
 		.hello = {
 			.flags = opts->bidir ? CTRL_HELLO_BIDIR : 0,
 			.domain = opts->domain,
-			.tstamp = opts->ts_mode,
+			.tstamp = src->mode,
 			.src = src->self,
 			.rev = {
 				.period_ns = opts->period_ns,
@@ -164,11 +164,6 @@ static int hello(struct source *src)
 		err("sink refused: %s", msg.welcome.text);
 		return -1;
 	}
-	/* The sink refuses a mismatch unless we said any. */
-	if ((int)msg.welcome.tstamp != src->mode)
-		warn("sink uses %s timestamps, this end %s; latencies will be off",
-		     ts_mode_str(msg.welcome.tstamp), ts_mode_str(src->mode));
-
 	src->sink_id = msg.welcome.src;
 	return 0;
 }
@@ -247,7 +242,7 @@ static void tx_timestamps(struct source *src)
 	int64_t now = ts_now(CLOCK_MONOTONIC), ts;
 	uint32_t id;
 
-	while (ts_recv_tx(src->probe_fd, &id, &ts) > 0) {
+	while (ts_recv_tx(src->probe_fd, src->mode, &id, &ts) > 0) {
 		src->tx_seq = ts_id_extend(src->tx_seq, id);
 		flow_tx(&src->flow[CTRL_FLOW_FWD].flow, src->tx_seq, ts, now);
 	}
@@ -255,17 +250,18 @@ static void tx_timestamps(struct source *src)
 
 static void rx_probes(struct source *src)
 {
-	int64_t now = ts_now(CLOCK_MONOTONIC), rx_ts;
+	int64_t now = ts_now(CLOCK_MONOTONIC);
 	struct ptp_sync sync;
+	struct ts_pair rx;
 
-	while (ptp_recv_sync(src->probe_fd, &sync, &rx_ts) > 0) {
+	while (ptp_recv_sync(src->probe_fd, &sync, &rx) > 0) {
 		if (sync.domain != src->opts->domain ||
 		    ptp_port_id_cmp(&sync.src, &src->sink_id))
 			continue;
 
 		src->rev_seq = ptp_seq_extend(src->rev_seq, sync.seq);
-		flow_rx(&src->flow[CTRL_FLOW_REV].flow, src->rev_seq, rx_ts,
-			sync.correction, now);
+		flow_rx(&src->flow[CTRL_FLOW_REV].flow, src->rev_seq,
+			ts_pick(&rx, src->mode), sync.correction, now);
 	}
 }
 

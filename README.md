@@ -119,14 +119,6 @@ taping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
 taping [<source-options>] <SINK-ADDRESS>
 
 Common options:
-  -T, --timestamping hw|sw|any
-      hw:  Require hardware timestamping support.
-      sw:  Use software timestamping.
-      any: Use hardware timestamping if it is available, otherwise fall
-           back to software timestamping.
-
-      By default, hardware timestamping support is required.
-
   -D, --domain N
       Operate in PTP domain N. The user must ensure that the domain is
       not used for time synchronization.
@@ -174,6 +166,20 @@ Commands:
       Shorthand for `stat <SINK-ADDRESS>`.
 
 Source options:
+
+  -T, --timestamping hw|sw|any
+      hw:  Require hardware timestamping support.
+      sw:  Use software timestamping.
+      any: Use hardware timestamping if it is available, otherwise fall
+           back to software timestamping.
+
+      The source decides, for both ends. The sink delivers the mode
+      asked for on the interface the session arrives on, or refuses
+      the session. Note that "any" only looks at the source's own
+      interface; if the sink cannot do hardware timestamping, rerun
+      with "sw".
+
+      By default, hardware timestamping support is required.
 
   -b, --bidir
       Also measure the latency from the sink to the source. Reported

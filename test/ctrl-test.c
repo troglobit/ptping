@@ -26,7 +26,7 @@ static void test_hello(void)
 		.hello = {
 			.flags = CTRL_HELLO_BIDIR,
 			.domain = 254,
-			.tstamp = CTRL_TS_ANY,
+			.tstamp = TS_MODE_SW,
 			.src = { .clock_id = { 1, 2, 3, 0xff, 0xfe, 4, 5, 6 }, .port = 1234 },
 			.rev = {
 				.period_ns = 10000000,
@@ -53,7 +53,6 @@ static void test_welcome(void)
 		.type = CTRL_WELCOME,
 		.welcome = {
 			.status = 0,
-			.tstamp = CTRL_TS_HW,
 			.src = { .clock_id = { 8, 7, 6, 5, 4, 3, 2, 1 }, .port = 1 },
 			.text = "",
 		},

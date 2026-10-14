@@ -152,7 +152,7 @@ static void rev_txts(struct session *s)
 	uint32_t id;
 	int64_t ts;
 
-	while (ts_recv_tx(s->rev_fd, &id, &ts) > 0) {
+	while (ts_recv_tx(s->rev_fd, s->mode, &id, &ts) > 0) {
 		s->rev_tx_seq = ts_id_extend(s->rev_tx_seq, id);
 		batch_add(s, CTRL_KIND_TX, s->rev_tx_seq, ts, 0);
 	}
@@ -209,7 +209,6 @@ static int session_start(struct sink *sink, struct session *s,
 	socklen_t llen = sizeof(local), plen = sizeof(peer);
 	char astr[ADDR_STRLEN], pstr[PTP_PORT_ID_STRLEN];
 	struct netif ni;
-	int mode;
 
 	if (session_find(sink, hello->domain, &hello->src)) {
 		sprintf(reason, "%s is already connected",
@@ -225,18 +224,13 @@ static int session_start(struct sink *sink, struct session *s,
 		return -1;
 	}
 
-	mode = ts_setup_netif(ni.name, sink->opts->ts_mode);
-	if (mode < 0) {
+	/* The source picks the mode; this end delivers it or refuses. */
+	if (ts_setup_netif(ni.name, hello->tstamp) < 0) {
 		sprintf(reason, "no hardware timestamping on %s", ni.name);
 		return -1;
 	}
-	if (hello->tstamp != CTRL_TS_ANY && (int)hello->tstamp != mode) {
-		sprintf(reason, "sink uses %s timestamps on %s, source wants %s",
-			ts_mode_str(mode), ni.name, ts_mode_str(hello->tstamp));
-		return -1;
-	}
 
-	s->mode = mode;
+	s->mode = hello->tstamp;
 	s->src = hello->src;
 	s->domain = hello->domain;
 	ptp_port_id_self(&s->self, ni.mac);
@@ -247,7 +241,7 @@ static int session_start(struct sink *sink, struct session *s,
 
 	info("%s: session from %s on %s, %s timestamps%s",
 	     addr_str((struct sockaddr *)&local, astr),
-	     ptp_port_id_str(&hello->src, pstr), ni.name, ts_mode_str(mode),
+	     ptp_port_id_str(&hello->src, pstr), ni.name, ts_mode_str(s->mode),
 	     hello->flags & CTRL_HELLO_BIDIR ? ", bidirectional" : "");
 	return 0;
 }
@@ -268,7 +262,6 @@ static void session_ctrl(struct sink *sink, struct session *s)
 			}
 			s->hello = 1;
 			s->due = 0;
-			welcome.welcome.tstamp = s->mode;
 			welcome.welcome.src = s->self;
 			if (ctrl_send(&s->ctrl, &welcome) || welcome.welcome.status) {
 				session_close(s);
@@ -338,9 +331,9 @@ static void sink_probes(struct sink *sink)
 {
 	struct ptp_sync sync;
 	struct session *s;
-	int64_t rx_ts;
+	struct ts_pair rx;
 
-	while (ptp_recv_sync(sink->udp_fd, &sync, &rx_ts) > 0) {
+	while (ptp_recv_sync(sink->udp_fd, &sync, &rx) > 0) {
 		s = session_find(sink, sync.domain, &sync.src);
 		if (!s) {
 			dbg("probe from unknown source, domain %u", sync.domain);
@@ -348,7 +341,8 @@ static void sink_probes(struct sink *sink)
 		}
 
 		s->fwd_seq = ptp_seq_extend(s->fwd_seq, sync.seq);
-		batch_add(s, CTRL_KIND_RX, s->fwd_seq, rx_ts, sync.correction);
+		batch_add(s, CTRL_KIND_RX, s->fwd_seq, ts_pick(&rx, s->mode),
+			  sync.correction);
 	}
 }
 
@@ -377,7 +371,8 @@ static int sink_listen(struct sink *sink, const char *host)
 		return sock_err("control port");
 	if (bind(sink->udp_fd, (struct sockaddr *)&ss, len))
 		return sock_err("probe port");
-	if (ts_setup_sock(sink->udp_fd, sink->opts->ts_mode))
+	/* Sessions of either mode share this socket. */
+	if (ts_setup_sock(sink->udp_fd, TS_MODE_ANY))
 		return sock_err("SO_TIMESTAMPING");
 
 	return 0;
