@@ -86,10 +86,21 @@ tail -6 "$tmp/stat.log" | grep -q "packets: 100/.*100/.* 0 lost" || fail "stat: 
 echo "record"
 run record record -c 20 -r 200 $sink "$tmp/rec.csv"
 [ "$(wc -l <"$tmp/rec.csv")" = 21 ] || fail "record: $(wc -l <"$tmp/rec.csv") lines"
-[ "$(head -1 "$tmp/rec.csv")" = "flow,seq,tx_ns,rx_ns,correction,latency_ns" ] || fail "record: header"
-missing=$(grep -E ",,|,$" "$tmp/rec.csv" || true)
+[ "$(head -1 "$tmp/rec.csv")" = "flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns" ] || fail "record: header"
+missing=$(cut -d, -f1-6 "$tmp/rec.csv" | grep -E ",,|,$" || true)
 [ -z "$missing" ] || fail "record: missing fields: $missing"
 [ "$(tail -1 "$tmp/rec.csv" | cut -d, -f1,2)" = "fwd,19" ] || fail "record: last line $(tail -1 "$tmp/rec.csv")"
+
+echo "window"
+# 50 ms cycle, open for its first half, probes every 2 ms: ten per
+# cycle, the last due 18 ms in. Unprivileged, nothing keeps the CPU
+# out of idle states that take a millisecond to leave, so the window
+# leaves that much margin.
+run window stat -b -c 20 -r 500 --cycle 50000000 --window 0:25000000 $sink
+tail -6 "$tmp/window.log" | grep -q "packets: 20/.*20/.* 0 lost.* 0 outside" || fail "window: $(tail -6 "$tmp/window.log")"
+run winrec record -c 20 -r 500 --cycle 50000000 --window 0:25000000 $sink "$tmp/win.csv"
+bad=$(tail -n +2 "$tmp/win.csv" | awk -F, '$7 == "" || $7 < 0 || $7 >= 25000000')
+[ -z "$bad" ] || fail "window: phases outside: $bad"
 
 echo "refusal"
 refuse size "smallest frame" stat -c 1 -s 50 $sink

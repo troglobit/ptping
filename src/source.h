@@ -7,6 +7,7 @@
 #include "flow.h"
 #include "netif.h"
 #include "ptping.h"
+#include "sched.h"
 
 /* The source sends probes, collects timestamps from both ends, pairs
  * them into samples, and hands the samples to a consumer: probe, stat
@@ -16,7 +17,8 @@ struct source;
 
 struct source_ops {
 	/* A resolved sample. May be NULL. */
-	void (*sample)(void *priv, enum ctrl_flow flow, const struct flow_sample *s);
+	void (*sample)(void *priv, const struct source *src, enum ctrl_flow flow,
+		       const struct flow_sample *s);
 	/* Every report interval, and once more at the end. May be NULL. */
 	void (*report)(void *priv, const struct source *src, int final);
 };
@@ -35,6 +37,7 @@ struct source {
 	enum ts_mode mode;	/* in effect at both ends */
 	struct netif ni;
 	struct source_flow flow[2];	/* indexed by enum ctrl_flow */
+	struct sched sched;	/* of the forward flow; the reverse one matches */
 	int64_t started;	/* CLOCK_MONOTONIC */
 
 	/* Private to source.c */
@@ -56,5 +59,12 @@ struct source {
  * Returns 0, or 1 if the session could not be set up or was lost. */
 int source_run(struct source *src, struct opts *opts,
 	       const struct source_ops *ops, void *priv);
+
+/* Where in the cycle a probe was transmitted, or TS_NONE without a
+ * window or a transmission timestamp. */
+static inline int64_t source_tx_phase(const struct source *src, int64_t tx)
+{
+	return sched_phase(&src->sched, tx, src->mode);
+}
 
 #endif

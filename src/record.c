@@ -20,17 +20,19 @@ static const char *field(int64_t ts, char *buf)
 	return buf;
 }
 
-static void sample(void *priv, enum ctrl_flow flow, const struct flow_sample *s)
+static void sample(void *priv, const struct source *src, enum ctrl_flow flow,
+		   const struct flow_sample *s)
 {
-	char tx[24], rx[24], lat[24];
+	char tx[24], rx[24], lat[24], phase[24];
 	int64_t latency = TS_NONE;
 
 	if (s->tx != TS_NONE && s->rx != TS_NONE)
 		latency = s->rx - s->tx;
 
-	fprintf(priv, "%s,%llu,%s,%s,%lld,%s\n", flow_name[flow],
+	fprintf(priv, "%s,%llu,%s,%s,%lld,%s,%s\n", flow_name[flow],
 		(unsigned long long)s->seq, field(s->tx, tx), field(s->rx, rx),
-		(long long)s->correction, field(latency, lat));
+		(long long)s->correction, field(latency, lat),
+		field(source_tx_phase(src, s->tx), phase));
 }
 
 static void report(void *priv, const struct source *src, int final)
@@ -54,7 +56,7 @@ int cmd_record(struct opts *opts)
 	/* Lines go out once per report interval anyway. */
 	setvbuf(fp, NULL, _IOFBF, 1 << 20);
 
-	fprintf(fp, "flow,seq,tx_ns,rx_ns,correction,latency_ns\n");
+	fprintf(fp, "flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns\n");
 	ret = source_run(&src, opts, &ops, fp);
 
 	if (fp != stdout)

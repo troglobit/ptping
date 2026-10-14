@@ -136,7 +136,8 @@ static void rev_send(struct session *s)
 		return;
 
 	ptp_sync_set_seq(s->pkt, s->rev_seq);
-	if (send(s->rev_fd, s->pkt, s->pkt_len, 0) < 0 && errno != EAGAIN)
+	if (ts_sendto(s->rev_fd, s->pkt, s->pkt_len, NULL, 0,
+		      sched_txtime(&s->sched)) < 0 && errno != EAGAIN)
 		dbg("reverse probe %llu: %m", (unsigned long long)s->rev_seq);
 	s->rev_seq++;
 
@@ -184,6 +185,10 @@ static int rev_open(struct sink *sink, struct session *s,
 	    sock_set_dscp(s->rev_fd, peer.ss_family, hello->rev.dscp) ||
 	    ts_setup_sock(s->rev_fd, s->mode)) {
 		sprintf(reason, "reverse socket: %m");
+		return -1;
+	}
+	if (hello->rev.txtime_lead_ns && ts_setup_txtime(s->rev_fd)) {
+		sprintf(reason, "reverse socket: SO_TXTIME: %m");
 		return -1;
 	}
 
@@ -310,7 +315,7 @@ static void session_accept(struct sink *sink)
 		.used = 1,
 		.due = ts_now(CLOCK_MONOTONIC) + HELLO_TIMEOUT_NS,
 		.rev_fd = -1,
-		.sched.fd = -1,
+		.sched = { .fd = -1, .qos_fd = -1 },
 		.batch = {
 			[CTRL_KIND_RX] = {
 				.type = CTRL_TS,

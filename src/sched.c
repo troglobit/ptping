@@ -1,4 +1,7 @@
 #include <errno.h>
+#include <fcntl.h>
+#include <stdint.h>
+#include <sys/prctl.h>
 #include <sys/timerfd.h>
 #include <unistd.h>
 
@@ -19,6 +22,27 @@ int sched_in_window(const struct sched *s, int64_t phase)
 		phase < s->win.offset_ns + s->win.len_ns;
 }
 
+/* Waking from a deep idle state takes longer than a window test
+ * tolerates: over 100 us on common CPUs. A PM QoS request of zero
+ * latency keeps the CPUs out of them for as long as the file is
+ * open. Returns the file descriptor, or -1. */
+static int qos_open(void)
+{
+	int32_t zero = 0;
+	int fd;
+
+	fd = open("/dev/cpu_dma_latency", O_RDWR | O_CLOEXEC);
+	if (fd < 0 || write(fd, &zero, sizeof(zero)) != sizeof(zero)) {
+		warn("cannot keep the CPUs out of deep idle states (%m); "
+		     "probes may leave over 100 us late");
+		if (fd >= 0)
+			close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
 int sched_init(struct sched *s, int64_t period_ns,
 	       const struct sched_window *win, int64_t txtime_lead_ns)
 {
@@ -27,6 +51,7 @@ int sched_init(struct sched *s, int64_t period_ns,
 		.txtime_lead_ns = txtime_lead_ns,
 		.clock = CLOCK_MONOTONIC,
 		.fd = -1,
+		.qos_fd = -1,
 	};
 	if (win)
 		s->win = *win;
@@ -45,6 +70,11 @@ int sched_init(struct sched *s, int64_t period_ns,
 		if (!s->tai_offset)
 			warn("CLOCK_TAI is not offset from CLOCK_REALTIME; "
 			     "is the UTC offset set?");
+
+		/* The default timer slack is 50 us, which is most of the
+		 * placement error a window test cares about. */
+		prctl(PR_SET_TIMERSLACK, 1);
+		s->qos_fd = qos_open();
 	}
 
 	s->fd = timerfd_create(s->clock, TFD_NONBLOCK);
@@ -59,7 +89,9 @@ void sched_fini(struct sched *s)
 {
 	if (s->fd >= 0)
 		close(s->fd);
-	s->fd = -1;
+	if (s->qos_fd >= 0)
+		close(s->qos_fd);
+	s->fd = s->qos_fd = -1;
 }
 
 /* The first time at or after t that lies inside the window. */
@@ -107,7 +139,7 @@ int64_t sched_txtime(const struct sched *s)
 int64_t sched_phase(const struct sched *s, int64_t ts, enum ts_mode mode)
 {
 	if (!s->win.cycle_ns || ts == TS_NONE)
-		return -1;
+		return TS_NONE;
 	if (mode == TS_MODE_SW)
 		ts += s->tai_offset;
 

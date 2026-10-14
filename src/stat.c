@@ -8,6 +8,7 @@
 
 struct stat_priv {
 	struct stats stats[2];
+	uint64_t outside[2];	/* transmitted outside the window */
 	int tty;
 	int64_t last;		/* time of the previous report, 0 before the first */
 	uint64_t last_sent[2], last_received[2];
@@ -42,6 +43,8 @@ static void report_flow(struct stat_priv *p, const struct source *src,
 	       st->sent ? 100.0 * st->lost / st->sent : 0.0);
 	if (st->no_tx)
 		printf(", %llu without tx timestamp", (unsigned long long)st->no_tx);
+	if (src->sched.win.cycle_ns)
+		printf(", %llu outside the window", (unsigned long long)p->outside[which]);
 	printf("\n");
 
 	if (st->received)
@@ -54,11 +57,15 @@ static void report_flow(struct stat_priv *p, const struct source *src,
 		printf("  latency: -\n");
 }
 
-static void sample(void *priv, enum ctrl_flow flow, const struct flow_sample *s)
+static void sample(void *priv, const struct source *src, enum ctrl_flow flow,
+		   const struct flow_sample *s)
 {
 	struct stat_priv *p = priv;
+	int64_t phase = source_tx_phase(src, s->tx);
 
 	stats_add(&p->stats[flow], s->tx, s->rx);
+	if (phase != TS_NONE && !sched_in_window(&src->sched, phase))
+		p->outside[flow]++;
 }
 
 static void report(void *priv, const struct source *src, int final)
@@ -88,8 +95,8 @@ static void report(void *priv, const struct source *src, int final)
 int cmd_stat(struct opts *opts)
 {
 	static const struct source_ops ops = { .sample = sample, .report = report };
-	struct stat_priv priv = { .tty = isatty(STDOUT_FILENO) };
 	struct source src;
+	struct stat_priv priv = { .tty = isatty(STDOUT_FILENO) };
 
 	stats_init(&priv.stats[CTRL_FLOW_FWD]);
 	stats_init(&priv.stats[CTRL_FLOW_REV]);

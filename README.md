@@ -90,6 +90,17 @@ the sink, and that the probes are forwarded as regular traffic:
 
     user@start:~# ptping probe fe80::dead:1%eth0
 
+### Testing a gate
+
+With a schedule, probes are only sent while a chosen window of the
+cycle is open. To send one probe per 1 ms cycle, 200 us after the
+cycle starts, through a gate that is open from 150 us to 350 us:
+
+    user@start:~# ptping stat -r 1000 --cycle 1000000 --window 200000:1000 fe80::dead:1%eth0
+
+Shift the window across the cycle to find where the gate opens and
+closes, and compare the latency inside and outside of it.
+
 ### Source
 
 Once the connection is known to be good, you are ready to launch a real
@@ -209,9 +220,6 @@ Source options:
 
       By default, 100 pps are sent.
 
-      Options describing a cyclical schedule, as required for 802.1Qbv
-      testing, are not yet defined.
-
   -s, --size <size>
       Use probe frames that are <size> bytes long on the wire,
       including the Ethernet header and FCS. Frames are padded using
@@ -227,7 +235,49 @@ Source options:
       within <seconds> of sending it.
 
       By default, 1 second.
+
+Schedule options:
+
+  These limit transmissions to a window of a cyclic schedule, such as
+  one gate of an IEEE 802.1Qbv gate control list. Probes keep their
+  rate, but one that would fall outside the window waits for the next
+  window to open. A window shorter than the time between probes thus
+  gives one probe per cycle, at the window's offset.
+
+  All times are in nanoseconds. The schedule is kept in CLOCK_TAI,
+  which is the PHC's timescale when ptp4l and phc2sys are running,
+  and the same timescale that tc's taprio uses. The reverse flow of
+  --bidir follows the same schedule.
+
+  --cycle <ns>
+      Cycle time of the schedule.
+
+  --window <offset>:<length>
+      Send only between <offset> and <offset> + <length> into each
+      cycle.
+
+  --base-time <ns>
+      Cycles start at this time, in CLOCK_TAI, as for tc's taprio.
+
+      By default, 0: cycles are aligned to multiples of the cycle time
+      since the epoch.
+
+  --txtime <lead>
+      Hand each probe to the kernel <lead> nanoseconds before it is
+      due, with its launch time set, for an etf qdisc to send it on
+      time. Without etf on the interface the kernel would send early,
+      which is why this is not on by default. Needs CAP_NET_ADMIN.
+
+      Without this, probes are sent from a timer, which places them
+      within tens of microseconds of their due time, provided ptping
+      runs as root: it then asks the kernel to keep the CPUs out of
+      deep idle states, from which waking up alone takes over 100 us.
 ```
+
+The transmission timestamp of each probe tells where in the cycle it
+actually left: `stat` counts probes that left outside the window, and
+`record` writes the phase in a column of its own.
+
 
 Building
 --------

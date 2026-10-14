@@ -175,7 +175,9 @@ interface and names it in HELLO; the sink delivers that mode on the
 interface the session arrived on, or refuses. The sink has no mode of
 its own, which is why `--timestamping` is a source option. Latency is
 simply `rx - tx`, with no conversion. `ptping` never reads the timestamping clocks
-itself; the loss timeout and all scheduling use `CLOCK_MONOTONIC`.
+itself; the loss timeout and the plain-rate schedule use
+`CLOCK_MONOTONIC`, and a windowed schedule `CLOCK_REALTIME` with the
+TAI offset, see "Transmission schedule".
 
 Timestamps are `int64_t` nanoseconds everywhere, in memory and on the
 control connection. The correctionField is kept as the raw signed
@@ -319,13 +321,39 @@ network one.
 
 ### Transmission schedule
 
-`sched.h` answers one question: when is the next probe due? Today it
-implements a fixed rate, stepping by exact integer periods from the
-start time rather than from the previous transmission, so the rate
-does not drift. The 802.1Qbv cyclical schedule will be a second
-implementation behind the same interface, and will likely move from
-`timerfd` to `SO_TXTIME` with the `etf` qdisc; the interface is
-deliberately just "next due time" so that change stays local.
+`sched.c` answers one question: when is the next probe due? Due
+times step by exact integer periods from the start time rather than
+from the previous transmission, so the rate does not drift.
+
+A schedule limits them to a window: a cycle time, a base time and one
+window given as offset and length within the cycle, which is how one
+gate of an 802.1Qbv gate control list looks from the outside. A due
+time outside the window moves to the start of the next window, so
+each window carries probes at its start plus multiples of the period
+while it is open, and a window shorter than the period gives exactly
+one probe per cycle at the window's offset.
+
+The schedule is in `CLOCK_TAI`, which is the PHC's timescale under
+ptp4l and phc2sys, and the clock tc's taprio uses for its base time.
+`timerfd` has no TAI clock, so a scheduled flow runs its timer on
+`CLOCK_REALTIME` with the TAI offset, measured once at start, applied
+to every due time. A plain rate stays on `CLOCK_MONOTONIC`. The
+schedule owns its timer, since it alone knows which clock it needs.
+
+Timer-driven sending places a probe within tens of microseconds of
+its due time. For better, a probe can carry an `SO_TXTIME` launch
+time for the `etf` qdisc, in which case the timer fires a lead time
+early and the qdisc, or the NIC with offload, releases the frame at
+the due time. This is opt-in, since without `etf` the kernel would
+send as soon as it got the frame.
+
+Where a probe really left is known from its transmission timestamp,
+whose phase in the cycle the consumers report: `stat` counts probes
+that left outside the window, `record` writes the phase per sample. A
+hardware timestamp is in the PHC's timescale already; a software one
+is in `CLOCK_REALTIME` and gets the TAI offset added.
+
+The reverse flow follows the same schedule, which HELLO carries.
 
 ### Consumers
 
@@ -343,8 +371,10 @@ deliberately just "next due time" so that change stays local.
   final report on exit covers the whole run.
 
 - `record` writes one CSV line per sample, in sequence order within
-  each flow, with the header `flow,seq,tx_ns,rx_ns,correction,latency_ns`.
-  Missing fields are empty. Lines are flushed every report interval.
+  each flow, with the header
+  `flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns`. Missing
+  fields are empty, and the phase is only there with a schedule.
+  Lines are flushed every report interval.
 
 ### Statistics
 
@@ -420,15 +450,16 @@ Code layout
       ts.c/h      SO_TIMESTAMPING setup, SIOCGHWTSTAMP/SIOCSHWTSTAMP
                   negotiation, cmsg and error queue parsing
       netif.c/h   interface lookup from a local address, MAC address
-      sched.h     next transmission time; fixed rate today
+      sched.c/h   next transmission time: a rate, limited to a window
+                  of a cyclic schedule; owns the timerfd
       flow.c/h    per-flow sample table, loss timeout, in-order
                   delivery to the consumer
       stats.c/h   counters, min/max/mean/mdev, histogram, percentiles
       log.h       err/warn/info/debug to stderr, -v controls level
       tspec.h     int64 ns helpers, timespec conversion
     test/
-      unit tests for ptp.c, ctrl.c, flow.c, stats.c, netif.c and
-      ts.c, run by `make check`
+      unit tests for ptp.c, ctrl.c, flow.c, stats.c, netif.c, ts.c
+      and sched.c, run by `make check`
       e2e.sh: two network namespaces joined by a veth pair, software
       timestamping, runs probe, stat and record end to end
 
@@ -469,7 +500,6 @@ tested by hand on real NICs.
 Open questions
 --------------
 
-- The 802.1Qbv schedule definition and its mapping onto `SO_TXTIME`.
 - Whether the slow-path warning threshold in `probe` should scale
   with something the user supplies, such as a hop count.
 - Whether to let the sink serve more than one domain at once.

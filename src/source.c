@@ -29,7 +29,7 @@ static void on_sample(void *arg, const struct flow_sample *s)
 	struct source_flow *sf = arg;
 
 	if (sf->src->ops->sample)
-		sf->src->ops->sample(sf->src->priv, sf->which, s);
+		sf->src->ops->sample(sf->src->priv, sf->src, sf->which, s);
 }
 
 static int flows_init(struct source *src)
@@ -112,6 +112,10 @@ static int probe_open(struct source *src, struct sockaddr_storage *local,
 		err_errno("probe socket");
 		return -1;
 	}
+	if (opts->txtime_lead_ns && ts_setup_txtime(fd)) {
+		err_errno("--txtime: SO_TXTIME (needs CAP_NET_ADMIN)");
+		return -1;
+	}
 
 	return 0;
 }
@@ -131,6 +135,8 @@ static int hello(struct source *src)
 				.count = opts->count,
 				.size = src->pkt_len,
 				.dscp = opts->dscp,
+				.win = opts->win,
+				.txtime_lead_ns = opts->txtime_lead_ns,
 			},
 		},
 	};
@@ -175,6 +181,12 @@ static int session_open(struct source *src)
 	socklen_t llen = sizeof(local);
 	int fd, mode;
 
+	if (sched_init(&src->sched, opts->period_ns, &opts->win,
+		       opts->txtime_lead_ns)) {
+		err_errno("schedule");
+		return -1;
+	}
+
 	if (addr_resolve(opts->argv[0], opts->port, &src->sink, &src->sink_len))
 		return -1;
 
@@ -213,28 +225,28 @@ static void timer_ack(int fd)
 	(void)!read(fd, &expirations, sizeof(expirations));
 }
 
-static void tx_stop(struct source *src, struct sched *sched)
+static void tx_stop(struct source *src)
 {
 	struct itimerspec its = { 0 };
 
-	timerfd_settime(sched->fd, 0, &its, NULL);
+	timerfd_settime(src->sched.fd, 0, &its, NULL);
 	src->stop_at = ts_now(CLOCK_MONOTONIC) + src->opts->timeout_ns;
 }
 
-static void tx_probe(struct source *src, struct sched *sched)
+static void tx_probe(struct source *src)
 {
 	ptp_sync_set_seq(src->pkt, src->seq);
-	if (sendto(src->probe_fd, src->pkt, src->pkt_len, 0,
-		   (struct sockaddr *)&src->sink, src->sink_len) < 0 &&
-	    errno != EAGAIN)
+	if (ts_sendto(src->probe_fd, src->pkt, src->pkt_len,
+		      (struct sockaddr *)&src->sink, src->sink_len,
+		      sched_txtime(&src->sched)) < 0 && errno != EAGAIN)
 		dbg("probe %llu: %m", (unsigned long long)src->seq);
 	flow_add(&src->flow[CTRL_FLOW_FWD].flow, src->seq, ts_now(CLOCK_MONOTONIC));
 	src->seq++;
 
 	if (src->opts->count && src->seq == src->opts->count)
-		tx_stop(src, sched);
+		tx_stop(src);
 	else
-		sched_arm(sched);
+		sched_arm(&src->sched);
 }
 
 static void tx_timestamps(struct source *src)
@@ -342,24 +354,18 @@ static int loop(struct source *src)
 	struct pollfd pfd[] = {
 		{ .fd = src->ctrl.fd, .events = POLLIN },
 		{ .fd = src->probe_fd, .events = POLLIN },
-		{ .fd = -1, .events = POLLIN },	/* the schedule's timer */
+		{ .fd = src->sched.fd, .events = POLLIN },
 		{ .fd = src->report_timer, .events = POLLIN },
 	};
 	struct itimerspec its = {
 		.it_value = ts_to_timespec(src->opts->report_ns),
 		.it_interval = ts_to_timespec(src->opts->report_ns),
 	};
-	struct sched sched;
 	int64_t now;
 	int ret = 0, timeout;
 
 	src->started = ts_now(CLOCK_MONOTONIC);
-	if (sched_init(&sched, src->opts->period_ns, NULL, 0)) {
-		err_errno("schedule");
-		return 1;
-	}
-	pfd[2].fd = sched.fd;
-	sched_arm(&sched);
+	sched_arm(&src->sched);
 	timerfd_settime(src->report_timer, 0, &its, NULL);
 
 	for (;;) {
@@ -368,7 +374,7 @@ static int loop(struct source *src)
 		if (drained(src, now) || interrupts > 1)
 			break;
 		if (interrupts && !src->stop_at)
-			tx_stop(src, &sched);
+			tx_stop(src);
 
 		timeout = -1;
 		if (src->stop_at)
@@ -385,8 +391,8 @@ static int loop(struct source *src)
 		if (pfd[1].revents & POLLIN)
 			rx_probes(src);
 		if (pfd[2].revents) {
-			timer_ack(sched.fd);
-			tx_probe(src, &sched);
+			timer_ack(src->sched.fd);
+			tx_probe(src);
 		}
 		if (pfd[3].revents) {
 			timer_ack(src->report_timer);
@@ -394,7 +400,6 @@ static int loop(struct source *src)
 		}
 	}
 
-	sched_fini(&sched);
 	return ret;
 }
 
@@ -412,6 +417,7 @@ int source_run(struct source *src, struct opts *opts,
 		.priv = priv,
 		.probe_fd = -1,
 		.report_timer = -1,
+		.sched = { .fd = -1, .qos_fd = -1 },
 		.ctrl.fd = -1,
 	};
 
@@ -435,6 +441,7 @@ out:
 	for (i = 0; i < 2; i++)
 		flow_fini(&src->flow[i].flow);
 	free(src->pkt);
+	sched_fini(&src->sched);
 	close(src->probe_fd);
 	close(src->report_timer);
 	close(src->ctrl.fd);

@@ -33,6 +33,7 @@ struct sched {
 	int fd;			/* timerfd, readable when a probe is due */
 	clockid_t clock;	/* of the timerfd */
 	int64_t tai_offset;	/* CLOCK_TAI minus CLOCK_REALTIME */
+	int qos_fd;		/* keeps the CPUs out of deep idle states */
 };
 
 /* Start now, with a timerfd of the right clock. win may be NULL for
@@ -53,9 +54,9 @@ void sched_arm(struct sched *s);
  * sent as soon as the timer fires. */
 int64_t sched_txtime(const struct sched *s);
 
-/* Where in the cycle a timestamp falls: 0 <= phase < cycle, or -1
- * without a window. Hardware timestamps are in the schedule's clock
- * already; software ones are in CLOCK_REALTIME. */
+/* Where in the cycle a timestamp falls: 0 <= phase < cycle, or
+ * TS_NONE without a window or a timestamp. Hardware timestamps are in
+ * the schedule's clock already; software ones are in CLOCK_REALTIME. */
 int64_t sched_phase(const struct sched *s, int64_t ts, enum ts_mode mode);
 
 /* Whether a phase lies inside the window. */

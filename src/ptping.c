@@ -34,7 +34,14 @@ static const char *usage_text =
 "  -i, --interval SECONDS        Time between reports (default: 1)\n"
 "  -r, --rate PPS                Probes per second (default: 100)\n"
 "  -s, --size BYTES              Frame size on the wire (default: minimum)\n"
-"  -W, --timeout SECONDS         Time to wait for a probe (default: 1)\n";
+"  -W, --timeout SECONDS         Time to wait for a probe (default: 1)\n"
+"\n"
+"Schedule options (times in nanoseconds, CLOCK_TAI):\n"
+"      --cycle NS                Cycle time of the schedule\n"
+"      --window OFFSET:LENGTH    Send only within this part of the cycle\n"
+"      --base-time NS            Cycles start here (default: 0)\n"
+"      --txtime LEAD             Set launch times for the etf qdisc, handing\n"
+"                                probes to the kernel LEAD ns early\n";
 
 static void usage(int status)
 {
@@ -55,6 +62,34 @@ static unsigned long parse_ulong(const char *opt, const char *arg,
 		    opt, min, max, arg);
 
 	return val;
+}
+
+static int64_t parse_ns(const char *opt, const char *arg)
+{
+	long long val;
+	char *end;
+
+	errno = 0;
+	val = strtoll(arg, &end, 0);
+	if (errno || *end || end == arg || val < 0)
+		die("%s: expected a number of nanoseconds, got \"%s\"", opt, arg);
+
+	return val;
+}
+
+/* "OFFSET:LENGTH" */
+static void parse_window(const char *arg, struct sched_window *win)
+{
+	char *colon;
+
+	errno = 0;
+	win->offset_ns = strtoll(arg, &colon, 0);
+	if (errno || colon == arg || *colon != ':' || win->offset_ns < 0)
+		die("--window: expected OFFSET:LENGTH, got \"%s\"", arg);
+
+	win->len_ns = parse_ns("--window", colon + 1);
+	if (!win->len_ns)
+		die("--window: the length must not be zero");
 }
 
 static int64_t parse_seconds(const char *opt, const char *arg)
@@ -78,6 +113,13 @@ static uint8_t parse_dscp(const char *arg)
 	return parse_ulong("--dscp", arg, 0, 63);
 }
 
+enum {
+	OPT_CYCLE = 256,
+	OPT_WINDOW,
+	OPT_BASE_TIME,
+	OPT_TXTIME,
+};
+
 static void opts_parse(struct opts *opts, int argc, char **argv)
 {
 	static const struct option longopts[] = {
@@ -95,6 +137,10 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 		{ "rate",         required_argument, NULL, 'r' },
 		{ "size",         required_argument, NULL, 's' },
 		{ "timeout",      required_argument, NULL, 'W' },
+		{ "cycle",        required_argument, NULL, OPT_CYCLE },
+		{ "window",       required_argument, NULL, OPT_WINDOW },
+		{ "base-time",    required_argument, NULL, OPT_BASE_TIME },
+		{ "txtime",       required_argument, NULL, OPT_TXTIME },
 		{ NULL }
 	};
 	int c;
@@ -146,11 +192,28 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 		case 'W':
 			opts->timeout_ns = parse_seconds("--timeout", optarg);
 			break;
+		case OPT_CYCLE:
+			opts->win.cycle_ns = parse_ns("--cycle", optarg);
+			break;
+		case OPT_WINDOW:
+			parse_window(optarg, &opts->win);
+			break;
+		case OPT_BASE_TIME:
+			opts->win.base = parse_ns("--base-time", optarg);
+			break;
+		case OPT_TXTIME:
+			opts->txtime_lead_ns = parse_ns("--txtime", optarg);
+			break;
 
 		default:
 			usage(1);
 		}
 	}
+
+	if (opts->win.cycle_ns && opts->win.offset_ns + opts->win.len_ns > opts->win.cycle_ns)
+		die("--window must fit in the cycle");
+	if (!opts->win.cycle_ns && (opts->win.len_ns || opts->win.base))
+		die("--window and --base-time need --cycle");
 
 	opts->argc = argc - optind;
 	opts->argv = argv + optind;

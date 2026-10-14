@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "sched.h"
 #include "ts.h"
 
 /* The PTP event port, used for probes and the control connection. */
@@ -23,6 +24,8 @@ struct opts {
 	uint16_t size;		/* frame size, 0: minimum */
 	int64_t report_ns;	/* between stat reports */
 	int64_t timeout_ns;	/* loss timeout */
+	struct sched_window win;
+	int64_t txtime_lead_ns;
 
 	int argc;
 	char **argv;		/* positional arguments */

@@ -18,7 +18,7 @@ static void test_rate(void)
 	check(t1 == t0 + 1000);
 	check(sched_next(&s) == t0 + 2000);
 	check(sched_txtime(&s) == TS_NONE);
-	check(sched_phase(&s, t0, TS_MODE_HW) == -1);
+	check(sched_phase(&s, t0, TS_MODE_HW) == TS_NONE);
 }
 
 static void test_window(void)

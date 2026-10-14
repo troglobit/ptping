@@ -7,7 +7,8 @@
 /* Above this, something in the path forwarded the probe in software. */
 #define SLOW_PATH_NS NS_PER_MS
 
-static void sample(void *priv, enum ctrl_flow flow, const struct flow_sample *s)
+static void sample(void *priv, const struct source *src, enum ctrl_flow flow,
+		   const struct flow_sample *s)
 {
 	struct flow_sample *samples = priv;
 
