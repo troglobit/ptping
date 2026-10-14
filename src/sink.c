@@ -36,7 +36,7 @@ struct session {
 	struct ctrl_msg batch[2];	/* CTRL_KIND_RX forward, CTRL_KIND_TX reverse */
 
 	/* Reverse flow, when the source asked for one. */
-	int rev_fd, rev_timer;
+	int rev_fd;
 	struct sched sched;
 	uint32_t rev_left;	/* probes still to send, 0: until BYE */
 	uint64_t rev_seq;	/* next to send */
@@ -88,8 +88,7 @@ static void session_close(struct session *s)
 	close(s->ctrl.fd);
 	if (s->rev_fd >= 0)
 		close(s->rev_fd);
-	if (s->rev_timer >= 0)
-		close(s->rev_timer);
+	sched_fini(&s->sched);
 	free(s->pkt);
 	s->used = 0;
 }
@@ -133,7 +132,7 @@ static void rev_send(struct session *s)
 {
 	uint64_t expirations;
 
-	if (read(s->rev_timer, &expirations, sizeof(expirations)) < 0)
+	if (read(s->sched.fd, &expirations, sizeof(expirations)) < 0)
 		return;
 
 	ptp_sync_set_seq(s->pkt, s->rev_seq);
@@ -144,7 +143,7 @@ static void rev_send(struct session *s)
 	if (s->rev_left && !--s->rev_left)
 		return;
 
-	sched_arm(&s->sched, s->rev_timer);
+	sched_arm(&s->sched);
 }
 
 static void rev_txts(struct session *s)
@@ -188,15 +187,14 @@ static int rev_open(struct sink *sink, struct session *s,
 		return -1;
 	}
 
-	s->rev_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-	if (s->rev_timer < 0) {
-		sprintf(reason, "timerfd: %m");
+	if (sched_init(&s->sched, hello->rev.period_ns, &hello->rev.win,
+		       hello->rev.txtime_lead_ns)) {
+		sprintf(reason, "reverse schedule: %m");
 		return -1;
 	}
 
 	s->rev_left = hello->rev.count;
-	sched_init(&s->sched, ts_now(CLOCK_MONOTONIC), hello->rev.period_ns);
-	sched_arm(&s->sched, s->rev_timer);
+	sched_arm(&s->sched);
 	return 0;
 }
 
@@ -312,7 +310,7 @@ static void session_accept(struct sink *sink)
 		.used = 1,
 		.due = ts_now(CLOCK_MONOTONIC) + HELLO_TIMEOUT_NS,
 		.rev_fd = -1,
-		.rev_timer = -1,
+		.sched.fd = -1,
 		.batch = {
 			[CTRL_KIND_RX] = {
 				.type = CTRL_TS,
@@ -414,7 +412,7 @@ static void sink_loop(struct sink *sink)
 
 			pfd[n++] = (struct pollfd){ .fd = s->ctrl.fd, .events = POLLIN };
 			pfd[n++] = (struct pollfd){ .fd = s->rev_fd, .events = POLLERR };
-			pfd[n++] = (struct pollfd){ .fd = s->rev_timer, .events = POLLIN };
+			pfd[n++] = (struct pollfd){ .fd = s->sched.fd, .events = POLLIN };
 		}
 
 		timeout = due == INT64_MAX ? -1 : (int)((due - now + NS_PER_MS - 1) / NS_PER_MS);

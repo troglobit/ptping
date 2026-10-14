@@ -33,6 +33,13 @@ static void test_hello(void)
 				.count = 5000,
 				.size = 100,
 				.dscp = 40,
+				.win = {
+					.cycle_ns = 1000000,
+					.base = -1,
+					.offset_ns = 200000,
+					.len_ns = 300000,
+				},
+				.txtime_lead_ns = 50000,
 			},
 		},
 	}, out;

@@ -52,7 +52,8 @@ static void test_sock(void)
 
 	before = ts_now(CLOCK_REALTIME);
 	for (i = 0; i < 2; i++)
-		check(sendto(fd, "ab", 2, 0, (struct sockaddr *)&sin, sizeof(sin)) == 2);
+		check(ts_sendto(fd, "ab", 2, (struct sockaddr *)&sin, sizeof(sin),
+				TS_NONE) == 2);
 
 	/* Ids count from 0 in send order. */
 	pfd.fd = fd;

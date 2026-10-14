@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "ptp.h"
+#include "sched.h"
 
 /* The control protocol runs over TCP from source to sink. Every
  * message is a four byte header (type, flags, 16-bit payload length)
@@ -40,6 +41,8 @@ struct ctrl_flow_params {
 	uint32_t count;		/* 0: until BYE */
 	uint16_t size;		/* PTP message length */
 	uint8_t dscp;
+	struct sched_window win;
+	int64_t txtime_lead_ns;	/* 0: send when due; else SO_TXTIME */
 };
 
 struct ctrl_hello {

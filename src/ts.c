@@ -157,6 +157,42 @@ void ts_from_msghdr(const struct msghdr *msg, struct ts_pair *ts)
 	}
 }
 
+int ts_setup_txtime(int fd)
+{
+	struct sock_txtime cfg = {
+		.clockid = CLOCK_TAI,
+		.flags = SOF_TXTIME_REPORT_ERRORS,
+	};
+
+	return setsockopt(fd, SOL_SOCKET, SO_TXTIME, &cfg, sizeof(cfg));
+}
+
+ssize_t ts_sendto(int fd, const void *buf, size_t len,
+		  const struct sockaddr *sa, socklen_t salen, int64_t txtime)
+{
+	struct iovec iov = { (void *)buf, len };
+	char cbuf[CMSG_SPACE(sizeof(uint64_t))];
+	struct msghdr msg = {
+		.msg_name = (void *)sa,
+		.msg_namelen = salen,
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+	};
+	struct cmsghdr *cm;
+
+	if (txtime == TS_NONE)
+		return sendto(fd, buf, len, 0, sa, salen);
+
+	msg.msg_control = cbuf;
+	msg.msg_controllen = sizeof(cbuf);
+	cm = CMSG_FIRSTHDR(&msg);
+	cm->cmsg_level = SOL_SOCKET;
+	cm->cmsg_type = SCM_TXTIME;
+	cm->cmsg_len = CMSG_LEN(sizeof(uint64_t));
+	memcpy(CMSG_DATA(cm), &txtime, sizeof(uint64_t));
+	return sendmsg(fd, &msg, 0);
+}
+
 int ts_recv_tx(int fd, enum ts_mode mode, uint32_t *id, int64_t *ts)
 {
 	const struct sock_extended_err *ee = NULL;
@@ -177,6 +213,10 @@ int ts_recv_tx(int fd, enum ts_mode mode, uint32_t *id, int64_t *ts)
 			ee = (const struct sock_extended_err *)CMSG_DATA(cm);
 	}
 
+	if (ee && ee->ee_origin == SO_EE_ORIGIN_TXTIME) {
+		dbg("a probe missed its launch time and was dropped");
+		return 0;
+	}
 	if (!ee || ee->ee_origin != SO_EE_ORIGIN_TIMESTAMPING) {
 		dbg("ignoring error queue entry that is not a timestamp");
 		return 0;

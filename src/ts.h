@@ -43,6 +43,15 @@ static inline int64_t ts_pick(const struct ts_pair *ts, enum ts_mode mode)
 	return mode == TS_MODE_HW ? ts->hw : ts->sw;
 }
 
+/* Ask for launch times in CLOCK_TAI on the socket, for the etf
+ * qdisc to honour. Needs CAP_NET_ADMIN. */
+int ts_setup_txtime(int fd);
+
+/* Send a datagram, with a launch time unless txtime is TS_NONE. sa
+ * may be NULL on a connected socket. */
+ssize_t ts_sendto(int fd, const void *buf, size_t len,
+		  const struct sockaddr *sa, socklen_t salen, int64_t txtime);
+
 /* Take one transmission timestamp of the given mode off the error
  * queue. Returns 1 with *id and *ts filled in, 0 if the queue is
  * empty, or -1 on error. */

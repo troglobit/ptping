@@ -227,6 +227,11 @@ HELLO:
     uint16_t size;
     uint8_t  dscp;
     uint8_t  reserved;
+    int64_t  cycle_ns;       /* 0: no window */
+    int64_t  base_time;      /* CLOCK_TAI */
+    int64_t  window_offset_ns;
+    int64_t  window_len_ns;
+    int64_t  txtime_lead_ns; /* 0: no SO_TXTIME */
 
 WELCOME:
 

@@ -8,7 +8,7 @@
 #include "be.h"
 #include "ctrl.h"
 
-#define HELLO_LEN 30
+#define HELLO_LEN 70
 #define WELCOME_FIXED_LEN 14
 
 const char *const ctrl_flow_names[2] = {
@@ -48,7 +48,12 @@ size_t ctrl_encode(const struct ctrl_msg *msg, uint8_t *buf)
 		put16(p + 12, msg->hello.rev.size);
 		p[14] = msg->hello.rev.dscp;
 		p[15] = 0;
-		p += 16;
+		put64(p + 16, msg->hello.rev.win.cycle_ns);
+		put64(p + 24, msg->hello.rev.win.base);
+		put64(p + 32, msg->hello.rev.win.offset_ns);
+		put64(p + 40, msg->hello.rev.win.len_ns);
+		put64(p + 48, msg->hello.rev.txtime_lead_ns);
+		p += 56;
 		break;
 	case CTRL_WELCOME:
 		*p++ = CTRL_VERSION;
@@ -113,6 +118,11 @@ ssize_t ctrl_decode(const uint8_t *buf, size_t len, struct ctrl_msg *msg)
 		msg->hello.rev.count = get32(p + 8);
 		msg->hello.rev.size = get16(p + 12);
 		msg->hello.rev.dscp = p[14];
+		msg->hello.rev.win.cycle_ns = get64(p + 16);
+		msg->hello.rev.win.base = get64(p + 24);
+		msg->hello.rev.win.offset_ns = get64(p + 32);
+		msg->hello.rev.win.len_ns = get64(p + 40);
+		msg->hello.rev.txtime_lead_ns = get64(p + 48);
 		break;
 	case CTRL_WELCOME:
 		if (plen < WELCOME_FIXED_LEN ||
