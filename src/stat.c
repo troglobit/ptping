@@ -67,19 +67,18 @@ static void report(void *priv, const struct source *src, int final)
 	int64_t now = ts_now(CLOCK_MONOTONIC);
 	int64_t since = (final || !p->last) ? src->started : p->last;
 	double seconds = (now - since) / (double)NS_PER_S;
-	int flows = src->opts->bidir ? 2 : 1;
+	int flows = src->opts->bidir ? 2 : 1, which;
 
 	if (seconds <= 0)
 		seconds = 1;
 
-	/* Overwrite the previous report on a terminal. */
+	/* On a terminal, move up over the previous report and erase it. */
 	if (p->tty && p->last)
-		printf("\033[%dA", 3 * flows);
+		printf("\033[%dA\033[J", 3 * flows);
 	p->last = now;
 
-	report_flow(p, src, CTRL_FLOW_FWD, seconds, final);
-	if (src->opts->bidir)
-		report_flow(p, src, CTRL_FLOW_REV, seconds, final);
+	for (which = 0; which < flows; which++)
+		report_flow(p, src, which, seconds, final);
 
 	if (!p->tty && !final)
 		printf("\n");
