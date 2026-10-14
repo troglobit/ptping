@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "ptping.h"
 #include "source.h"
 #include "stats.h"
-#include "taping.h"
 #include "tspec.h"
 
 struct stat_priv {

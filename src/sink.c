@@ -12,8 +12,8 @@
 #include "log.h"
 #include "netif.h"
 #include "ptp.h"
+#include "ptping.h"
 #include "sched.h"
-#include "taping.h"
 #include "ts.h"
 #include "tspec.h"
 

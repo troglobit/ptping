@@ -1,5 +1,5 @@
-#ifndef TAPING_BE_H
-#define TAPING_BE_H
+#ifndef PTPING_BE_H
+#define PTPING_BE_H
 
 #include <endian.h>
 #include <stdint.h>

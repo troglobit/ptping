@@ -5,19 +5,19 @@
 #include <string.h>
 
 #include "log.h"
-#include "taping.h"
+#include "ptping.h"
 #include "tspec.h"
 
 #include "config.h"
 
 static const char *usage_text =
-"usage: taping [<common-options>] <command> [<command-options-and-arguments>]\n"
+"usage: ptping [<common-options>] <command> [<command-options-and-arguments>]\n"
 "\n"
-"  taping sink   [<BIND-ADDRESS>]\n"
-"  taping probe  [<source-options>] <SINK-ADDRESS>\n"
-"  taping stat   [<source-options>] <SINK-ADDRESS>\n"
-"  taping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]\n"
-"  taping [<source-options>] <SINK-ADDRESS>\n"
+"  ptping sink   [<BIND-ADDRESS>]\n"
+"  ptping probe  [<source-options>] <SINK-ADDRESS>\n"
+"  ptping stat   [<source-options>] <SINK-ADDRESS>\n"
+"  ptping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]\n"
+"  ptping [<source-options>] <SINK-ADDRESS>\n"
 "\n"
 "Common options:\n"
 "  -D, --domain N                PTP domain (default: 254)\n"
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
 	struct opts opts = {
 		.ts_mode = TS_MODE_HW,
 		.domain = 254,
-		.port = TAPING_PORT,
+		.port = PTPING_PORT,
 		.dscp = 40, /* CS5 */
 		.period_ns = NS_PER_S / 100,
 		.report_ns = NS_PER_S,
@@ -204,7 +204,7 @@ int main(int argc, char **argv)
 		opts.argc--;
 		opts.argv++;
 	} else {
-		/* "taping [<source-options>] <SINK-ADDRESS>" */
+		/* "ptping [<source-options>] <SINK-ADDRESS>" */
 		cmd = cmd_find("stat");
 	}
 

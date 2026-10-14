@@ -5,7 +5,7 @@
 
 set -e
 
-taping=${TAPING:-./taping}
+ptping=${PTPING:-./ptping}
 tmp=$(mktemp -d)
 sink_pid=
 
@@ -13,8 +13,8 @@ cleanup()
 {
 	[ -n "$sink_pid" ] && kill -INT "$sink_pid" 2>/dev/null && wait "$sink_pid" || true
 	if [ -n "$src_ns" ]; then
-		ip netns del taping-a 2>/dev/null || true
-		ip netns del taping-b 2>/dev/null || true
+		ip netns del ptping-a 2>/dev/null || true
+		ip netns del ptping-b 2>/dev/null || true
 	fi
 	rm -rf "$tmp"
 }
@@ -32,7 +32,7 @@ run()
 {
 	name=$1
 	shift
-	$src_ns $taping $common "$@" >"$tmp/$name.log" 2>&1 ||
+	$src_ns $ptping $common "$@" >"$tmp/$name.log" 2>&1 ||
 		fail "$name: $(cat "$tmp/$name.log")"
 }
 
@@ -43,24 +43,24 @@ refuse()
 	name=$1
 	pattern=$2
 	shift 2
-	$src_ns $taping $common "$@" >"$tmp/$name.log" 2>&1 &&
+	$src_ns $ptping $common "$@" >"$tmp/$name.log" 2>&1 &&
 		fail "$name: accepted"
 	grep -q "$pattern" "$tmp/$name.log" ||
 		fail "$name: $(cat "$tmp/$name.log")"
 }
 
 if [ "$(id -u)" = 0 ]; then
-	ip netns add taping-a
-	ip netns add taping-b
-	ip link add veth-a netns taping-a type veth peer name veth-b netns taping-b
-	ip -n taping-a addr add 10.0.0.1/24 dev veth-a
-	ip -n taping-b addr add 10.0.0.2/24 dev veth-b
-	ip -n taping-a link set veth-a up
-	ip -n taping-b link set veth-b up
-	ip -n taping-a link set lo up
-	ip -n taping-b link set lo up
-	sink_ns="ip netns exec taping-b"
-	src_ns="ip netns exec taping-a"
+	ip netns add ptping-a
+	ip netns add ptping-b
+	ip link add veth-a netns ptping-a type veth peer name veth-b netns ptping-b
+	ip -n ptping-a addr add 10.0.0.1/24 dev veth-a
+	ip -n ptping-b addr add 10.0.0.2/24 dev veth-b
+	ip -n ptping-a link set veth-a up
+	ip -n ptping-b link set veth-b up
+	ip -n ptping-a link set lo up
+	ip -n ptping-b link set lo up
+	sink_ns="ip netns exec ptping-b"
+	src_ns="ip netns exec ptping-a"
 	sink=10.0.0.2
 	common="-T sw -p 319"
 else
@@ -70,7 +70,7 @@ else
 	common="-T sw -p 31900"
 fi
 
-$sink_ns $taping $common sink $sink >"$tmp/sink.log" 2>&1 &
+$sink_ns $ptping $common sink $sink >"$tmp/sink.log" 2>&1 &
 sink_pid=$!
 sleep 0.3
 

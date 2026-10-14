@@ -1,5 +1,5 @@
-#ifndef TAPING_SCHED_H
-#define TAPING_SCHED_H
+#ifndef PTPING_SCHED_H
+#define PTPING_SCHED_H
 
 #include <stdint.h>
 #include <sys/timerfd.h>

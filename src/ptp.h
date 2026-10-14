@@ -1,5 +1,5 @@
-#ifndef TAPING_PTP_H
-#define TAPING_PTP_H
+#ifndef PTPING_PTP_H
+#define PTPING_PTP_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -14,7 +14,7 @@ struct ptp_port_id {
 	uint16_t port;
 };
 
-/* The fields of a received Sync message that taping cares about. */
+/* The fields of a received Sync message that ptping cares about. */
 struct ptp_sync {
 	uint8_t domain;
 	struct ptp_port_id src;

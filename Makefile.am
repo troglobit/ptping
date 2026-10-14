@@ -1,8 +1,8 @@
 AM_CFLAGS = -std=gnu11 -Wall -Wextra -Werror -Wno-unused-parameter
 AM_CPPFLAGS = -I$(top_srcdir)/src -D_GNU_SOURCE
 
-noinst_LIBRARIES = libtaping.a
-libtaping_a_SOURCES = \
+noinst_LIBRARIES = libptping.a
+libptping_a_SOURCES = \
 	src/be.h \
 	src/ctrl.c \
 	src/ctrl.h \
@@ -21,12 +21,12 @@ libtaping_a_SOURCES = \
 	src/ts.h \
 	src/tspec.h
 
-bin_PROGRAMS = taping
-taping_SOURCES = src/probe.c src/record.c src/sink.c src/source.c src/source.h src/stat.c src/taping.c src/taping.h
+bin_PROGRAMS = ptping
+ptping_SOURCES = src/probe.c src/record.c src/sink.c src/source.c src/source.h src/stat.c src/ptping.c src/ptping.h
 
 check_PROGRAMS = test/ctrl-test test/flow-test test/netif-test test/ptp-test test/stats-test test/ts-test
 TESTS = $(check_PROGRAMS) test/e2e.sh
-LDADD = libtaping.a -lm
+LDADD = libptping.a -lm
 
 test_ctrl_test_SOURCES = test/ctrl-test.c test/test.h
 test_flow_test_SOURCES = test/flow-test.c test/test.h

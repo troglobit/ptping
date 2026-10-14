@@ -1,7 +1,7 @@
-Time-aware Ping
-===============
+Precisely Timed Ping
+====================
 
-`taping` measures the forwarding latency of a network. In contrast to
+`ptping` measures the forwarding latency of a network. In contrast to
 `ping(8)`, it offers high precision measurements by:
 
 - Using L4 PTP Sync messages as probe packets. This allows it to reuse
@@ -11,8 +11,8 @@ Time-aware Ping
 - Scheduling transmissions according to a cyclical schedule, suitable
   for testing the performance of IEEE 802.1Qbv networks.
 
-Similar to `iperf3(1)`, a `taping` _source_ communicates with another
-`taping` _sink_. Parallel to the probe packets, a TCP control
+Similar to `iperf3(1)`, a `ptping` _source_ communicates with another
+`ptping` _sink_. Parallel to the probe packets, a TCP control
 connection is used to communicate results back to the source.
 
 
@@ -23,12 +23,12 @@ A one-way latency is the difference between a reception timestamp
 taken at the sink and a transmission timestamp taken at the source.
 These are taken by two different clocks, so any offset between them
 ends up directly in every sample, and any wander between them ends up
-in the measured jitter. `taping` does not synchronize the clocks, it
+in the measured jitter. `ptping` does not synchronize the clocks, it
 only relies on them being synchronized:
 
 - With hardware timestamping, the PHCs of the source and sink NICs
   must be synchronized, typically by running `ptp4l(8)` on both hosts
-  in a PTP domain _other_ than the one `taping` uses.
+  in a PTP domain _other_ than the one `ptping` uses.
 
 - With software timestamping, the system clocks must be synchronized,
   e.g. by `phc2sys(8)` tracking a synchronized PHC.
@@ -52,17 +52,17 @@ treat them as PTP, rather than as regular traffic:
   expected are a sure sign of this. `probe` warns when it sees them.
 
 - Transparent clocks add their residence time to the correctionField
-  of the Sync message, typically in all domains. `taping` records the
+  of the Sync message, typically in all domains. `ptping` records the
   correctionField of every received probe, so the residence time can
   be separated from the propagation delay.
 
-- Boundary clocks that are not members of `taping`'s domain will
+- Boundary clocks that are not members of `ptping`'s domain will
   either forward the probes as regular traffic or drop them. `probe`
   reports which.
 
-On the hosts themselves, `taping` binds UDP port 319, which a `ptp4l`
+On the hosts themselves, `ptping` binds UDP port 319, which a `ptp4l`
 instance using UDP transport will already hold. Run `ptp4l` with its
-L2 transport (`-2`) on hosts that also run `taping`.
+L2 transport (`-2`) on hosts that also run `ptping`.
 
 
 HOWTO
@@ -71,16 +71,16 @@ HOWTO
 ### Create a sink
 
 First, launch a _sink_ on the host attached to the egress point of the
-network under test. In simple setups, `taping` can typically be run
+network under test. In simple setups, `ptping` can typically be run
 without any additional arguments:
 
-    user@end:~# taping sink
+    user@end:~# ptping sink
 
 In case multiple addresses are assigned to the host running the sink,
 you can specify which one you want to bind to. Link-local addresses
 must carry a scope:
 
-    user@end:~# taping sink fe80::dead:1%eth0
+    user@end:~# ptping sink fe80::dead:1%eth0
 
 ### Test connection
 
@@ -88,7 +88,7 @@ Before running any measurements, ensure that the sink is reachable from
 the source, that timestamps can be collected both at the source and at
 the sink, and that the probes are forwarded as regular traffic:
 
-    user@start:~# taping probe fe80::dead:1%eth0
+    user@start:~# ptping probe fe80::dead:1%eth0
 
 ### Source
 
@@ -96,27 +96,27 @@ Once the connection is known to be good, you are ready to launch a real
 test. The `stat` command outputs a continuously updating summary of the
 current session:
 
-    user@start:~# taping stat fe80::dead:1%eth0
+    user@start:~# ptping stat fe80::dead:1%eth0
     Packets: 2043/101pps -> 2040/100pps source -> sink, 3 lost (0.1%)
     Latency: 2.350/2.390/2.468/0.054 us min/avg/max/mdev
     Tail:    2.421/2.460 us p99/p99.9
 
 To save every sample for later analysis, use `record` instead:
 
-    user@start:~# taping record fe80::dead:1%eth0 run1.csv
+    user@start:~# ptping record fe80::dead:1%eth0 run1.csv
 
 
 Usage
 -----
 
 ```
-taping [<common-options>] <command> [<command-options-and-arguments>]
+ptping [<common-options>] <command> [<command-options-and-arguments>]
 
-taping sink   [<sink-options>] [<BIND-ADDRESS>]
-taping probe  [<source-options>] <SINK-ADDRESS>
-taping stat   [<source-options>] <SINK-ADDRESS>
-taping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
-taping [<source-options>] <SINK-ADDRESS>
+ptping sink   [<sink-options>] [<BIND-ADDRESS>]
+ptping probe  [<source-options>] <SINK-ADDRESS>
+ptping stat   [<source-options>] <SINK-ADDRESS>
+ptping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
+ptping [<source-options>] <SINK-ADDRESS>
 
 Common options:
   -D, --domain N
@@ -232,7 +232,7 @@ Source options:
 Building
 --------
 
-`taping` uses a standard autotools setup, so building essentially boils
+`ptping` uses a standard autotools setup, so building essentially boils
 down to:
 
     ./configure && make && make install

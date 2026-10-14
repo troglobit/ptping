@@ -1,5 +1,5 @@
-#ifndef TAPING_LOG_H
-#define TAPING_LOG_H
+#ifndef PTPING_LOG_H
+#define PTPING_LOG_H
 
 #include <stdio.h>
 #include <stdlib.h>

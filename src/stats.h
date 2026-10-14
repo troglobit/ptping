@@ -1,5 +1,5 @@
-#ifndef TAPING_STATS_H
-#define TAPING_STATS_H
+#ifndef PTPING_STATS_H
+#define PTPING_STATS_H
 
 #include <stdint.h>
 

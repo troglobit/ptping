@@ -1,5 +1,5 @@
-#ifndef TAPING_H
-#define TAPING_H
+#ifndef PTPING_H
+#define PTPING_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -7,7 +7,7 @@
 #include "ts.h"
 
 /* The PTP event port, used for probes and the control connection. */
-#define TAPING_PORT 319
+#define PTPING_PORT 319
 
 /* Everything the command line can say, for all commands. Each command
  * reads the fields that apply to it. */

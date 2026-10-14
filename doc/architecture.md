@@ -1,14 +1,14 @@
-taping architecture
+ptping architecture
 ===================
 
-README.md says what `taping` does. This document says how it is built,
+README.md says what `ptping` does. This document says how it is built,
 in enough detail to implement from.
 
 
 Overview
 --------
 
-`taping` is a single, single-threaded, Linux-only C program. It has no
+`ptping` is a single, single-threaded, Linux-only C program. It has no
 dependencies beyond libc and the kernel headers. Its four commands are
 two programs in disguise:
 
@@ -71,7 +71,7 @@ A probe is a PTP version 2 Sync message, carried over UDP on port 319
 | logMessageInterval  | 0x7f                                           |
 | originTimestamp     | 0                                              |
 
-The twoStepFlag is set because `taping` never relies on an on-wire
+The twoStepFlag is set because `ptping` never relies on an on-wire
 timestamp; it always collects the transmission timestamp from the
 socket error queue. One-step hardware is free to overwrite
 originTimestamp, and the sink ignores it.
@@ -80,7 +80,7 @@ originTimestamp, and the sink ignores it.
 
 The clockIdentity is the EUI-64 derived from the MAC address of the
 interface the probes leave through, exactly as `ptp4l` does. The
-portNumber is `(getpid() % 65535) + 1`, so that several `taping`
+portNumber is `(getpid() % 65535) + 1`, so that several `ptping`
 processes on one host are distinguishable on the sink. The pair is
 sent to the sink in the HELLO message, and the sink uses it to map
 received probes to sessions.
@@ -141,7 +141,7 @@ hosts:
 
 Hardware timestamping is a per-interface setting, `SIOCSHWTSTAMP`. On
 startup, and on the sink whenever a new session arrives on a
-previously unseen interface, `taping`:
+previously unseen interface, `ptping`:
 
 1. Reads the current configuration with `SIOCGHWTSTAMP`.
 2. Leaves it alone if `tx_type` is not `OFF` and `rx_filter` already
@@ -174,7 +174,7 @@ in `CLOCK_REALTIME`. The source resolves its mode on its own
 interface and names it in HELLO; the sink delivers that mode on the
 interface the session arrived on, or refuses. The sink has no mode of
 its own, which is why `--timestamping` is a source option. Latency is
-simply `rx - tx`, with no conversion. `taping` never reads the timestamping clocks
+simply `rx - tx`, with no conversion. `ptping` never reads the timestamping clocks
 itself; the loss timeout and all scheduling use `CLOCK_MONOTONIC`.
 
 Timestamps are `int64_t` nanoseconds everywhere, in memory and on the
@@ -401,7 +401,7 @@ Code layout
 -----------
 
     src/
-      taping.c    main(): common options, command dispatch
+      ptping.c    main(): common options, command dispatch
       sink.c      sink command
       source.c    source event loop, session setup, shared by the three
                   source commands

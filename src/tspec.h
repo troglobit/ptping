@@ -1,5 +1,5 @@
-#ifndef TAPING_TSPEC_H
-#define TAPING_TSPEC_H
+#ifndef PTPING_TSPEC_H
+#define PTPING_TSPEC_H
 
 #include <stdint.h>
 #include <time.h>

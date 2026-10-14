@@ -1,6 +1,6 @@
-AC_INIT([taping], [0.1], [tobias@waldekranz.com])
+AC_INIT([ptping], [0.1], [tobias@waldekranz.com])
 AC_CONFIG_AUX_DIR([build-aux])
-AC_CONFIG_SRCDIR([src/taping.c])
+AC_CONFIG_SRCDIR([src/ptping.c])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([1.11 foreign subdir-objects -Wall -Werror])
 AM_SILENT_RULES([yes])

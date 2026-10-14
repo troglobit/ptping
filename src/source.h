@@ -1,12 +1,12 @@
-#ifndef TAPING_SOURCE_H
-#define TAPING_SOURCE_H
+#ifndef PTPING_SOURCE_H
+#define PTPING_SOURCE_H
 
 #include <sys/socket.h>
 
 #include "ctrl.h"
 #include "flow.h"
 #include "netif.h"
-#include "taping.h"
+#include "ptping.h"
 
 /* The source sends probes, collects timestamps from both ends, pairs
  * them into samples, and hands the samples to a consumer: probe, stat

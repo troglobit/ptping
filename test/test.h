@@ -1,5 +1,5 @@
-#ifndef TAPING_TEST_H
-#define TAPING_TEST_H
+#ifndef PTPING_TEST_H
+#define PTPING_TEST_H
 
 #include <stdio.h>
 #include <stdlib.h>

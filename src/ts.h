@@ -1,5 +1,5 @@
-#ifndef TAPING_TS_H
-#define TAPING_TS_H
+#ifndef PTPING_TS_H
+#define PTPING_TS_H
 
 #include <stdint.h>
 #include <sys/socket.h>

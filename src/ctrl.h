@@ -1,5 +1,5 @@
-#ifndef TAPING_CTRL_H
-#define TAPING_CTRL_H
+#ifndef PTPING_CTRL_H
+#define PTPING_CTRL_H
 
 #include <stddef.h>
 #include <stdint.h>

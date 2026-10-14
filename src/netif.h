@@ -1,5 +1,5 @@
-#ifndef TAPING_NETIF_H
-#define TAPING_NETIF_H
+#ifndef PTPING_NETIF_H
+#define PTPING_NETIF_H
 
 #include <net/if.h>
 #include <netinet/in.h>
