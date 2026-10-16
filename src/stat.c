@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -10,6 +11,7 @@ struct stat_priv {
 	struct stats stats[2];
 	struct stats tagged[2][SCHED_TAGS];	/* per tag, with a window */
 	int tty;
+	int lines;		/* printed by the report so far */
 	int64_t last;		/* time of the previous report, 0 before the first */
 	uint64_t last_sent[2], last_received[2];
 };
@@ -19,25 +21,23 @@ static double us(double ns)
 	return ns / NS_PER_US;
 }
 
-static void latency_line(const char *label, const struct stats *st)
+/* Every line of the report goes through here, so the redraw knows
+ * how far up to go. */
+static void line(struct stat_priv *p, const char *fmt, ...)
 {
-	printf("  %s: ", label);
-	if (st->received)
-		printf("%llu, %.3f/%.3f/%.3f/%.3f us min/avg/max/mdev, "
-		       "%.3f/%.3f us p99/p99.9\n",
-		       (unsigned long long)st->received,
-		       us(st->min), us(st->mean), us(st->max), us(stats_mdev(st)),
-		       us(stats_percentile(st, 0.99)),
-		       us(stats_percentile(st, 0.999)));
-	else
-		printf("-\n");
+	va_list ap;
+
+	va_start(ap, fmt);
+	vprintf(fmt, ap);
+	va_end(ap);
+	putchar('\n');
+	p->lines++;
 }
 
 /* Rates are over the interval, or over the whole run in the final
- * report. A fixed number of lines, so a terminal redraw can count on
- * it: three, plus one per tag with a window. */
-static void report_flow(struct stat_priv *p, const struct source *src,
-			enum ctrl_flow which, double seconds, int final)
+ * report. */
+static void packets_line(struct stat_priv *p, const struct source *src,
+			 enum ctrl_flow which, double seconds, int final)
 {
 	const struct stats *st = &p->stats[which];
 	uint64_t sent = st->sent + flow_outstanding(&src->flow[which].flow);
@@ -46,26 +46,52 @@ static void report_flow(struct stat_priv *p, const struct source *src,
 	uint64_t received_base = final ? 0 : p->last_received[which];
 	double tx_rate = (sent - sent_base) / seconds;
 	double rx_rate = (received - received_base) / seconds;
-	enum sched_tag tag;
+	char no_tx[48] = "";
 
 	p->last_sent[which] = sent;
 	p->last_received[which] = received;
 
-	printf("%s:\n", ctrl_flow_names[which]);
-	printf("  packets: %llu/%.0fpps sent, %llu/%.0fpps received, %llu lost (%.1f%%)",
-	       (unsigned long long)sent, tx_rate,
-	       (unsigned long long)received, rx_rate,
-	       (unsigned long long)st->lost,
-	       st->sent ? 100.0 * st->lost / st->sent : 0.0);
 	if (st->no_tx)
-		printf(", %llu without tx timestamp", (unsigned long long)st->no_tx);
-	printf("\n");
+		snprintf(no_tx, sizeof(no_tx), ", %llu without tx timestamp",
+			 (unsigned long long)st->no_tx);
 
-	latency_line("latency", st);
+	line(p, "%s: %llu sent (%.0f pps), %llu received (%.0f pps), %llu lost (%.1f%%)%s",
+	     ctrl_flow_names[which],
+	     (unsigned long long)sent, tx_rate,
+	     (unsigned long long)received, rx_rate,
+	     (unsigned long long)st->lost,
+	     st->sent ? 100.0 * st->lost / st->sent : 0.0, no_tx);
+}
 
+#define LABEL_WIDTH 14
+
+static void table_row(struct stat_priv *p, const char *label, const struct stats *st)
+{
+	if (st->received)
+		line(p, "%-*s %7llu %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f",
+		     LABEL_WIDTH, label, (unsigned long long)st->received,
+		     us(st->min), us(st->mean), us(st->max), us(stats_mdev(st)),
+		     us(stats_percentile(st, 0.99)),
+		     us(stats_percentile(st, 0.999)));
+	else
+		line(p, "%-*s %7llu %9s %9s %9s %9s %9s %9s",
+		     LABEL_WIDTH, label, 0ULL, "-", "-", "-", "-", "-", "-");
+}
+
+/* One row for all samples, and one per tag with a window. With two
+ * flows, a row naming the flow comes before its rows. */
+static void table_flow(struct stat_priv *p, const struct source *src,
+		       enum ctrl_flow which)
+{
+	enum sched_tag tag;
+
+	if (src->opts->bidir)
+		line(p, "%s", ctrl_flow_names[which]);
+
+	table_row(p, "all", &p->stats[which]);
 	if (src->sched.win.cycle_ns) {
 		for (tag = TAG_INSIDE; tag < SCHED_TAGS; tag++)
-			latency_line(sched_tag_names[tag], &p->tagged[which][tag]);
+			table_row(p, sched_tag_names[tag], &p->tagged[which][tag]);
 	}
 }
 
@@ -87,18 +113,24 @@ static void report(void *priv, const struct source *src, int final)
 	int64_t since = (final || !p->last) ? src->started : p->last;
 	double seconds = (now - since) / (double)NS_PER_S;
 	int flows = src->opts->bidir ? 2 : 1, which;
-	int lines = 3 + (src->sched.win.cycle_ns ? SCHED_TAGS - 1 : 0);
 
 	if (seconds <= 0)
 		seconds = 1;
 
 	/* On a terminal, move up over the previous report and erase it. */
-	if (p->tty && p->last)
-		printf("\033[%dA\033[J", lines * flows);
+	if (p->tty && p->lines)
+		printf("\033[%dA\033[J", p->lines);
+	p->lines = 0;
 	p->last = now;
 
 	for (which = 0; which < flows; which++)
-		report_flow(p, src, which, seconds, final);
+		packets_line(p, src, which, seconds, final);
+
+	line(p, "");
+	line(p, "%-*s %7s %9s %9s %9s %9s %9s %9s", LABEL_WIDTH, "latency (us)",
+	     "count", "min", "avg", "max", "mdev", "p99", "p99.9");
+	for (which = 0; which < flows; which++)
+		table_flow(p, src, which);
 
 	if (!p->tty && !final)
 		printf("\n");

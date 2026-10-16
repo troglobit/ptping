@@ -116,9 +116,14 @@ test. The `stat` command outputs a continuously updating summary of the
 current session:
 
     user@start:~# ptping stat fe80::dead:1%eth0
-    Packets: 2043/101pps -> 2040/100pps source -> sink, 3 lost (0.1%)
-    Latency: 2.350/2.390/2.468/0.054 us min/avg/max/mdev
-    Tail:    2.421/2.460 us p99/p99.9
+    source -> sink: 2043 sent (101 pps), 2040 received (100 pps), 3 lost (0.1%)
+
+    latency (us)     count       min       avg       max      mdev       p99     p99.9
+    all               2040     2.350     2.390     2.468     0.054     2.421     2.460
+
+With a window, the table gets a row each for the probes that left
+inside and outside of it, and with `--bidir` a second block of rows
+for the reverse flow.
 
 To save every sample for later analysis, use `record` instead:
 

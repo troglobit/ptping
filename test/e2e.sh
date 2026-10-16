@@ -81,7 +81,7 @@ grep -q "sink -> source: latency" "$tmp/probe.log" || fail "probe: no reverse la
 
 echo "stat"
 run stat stat -b -c 100 -r 200 -i 200ms $sink
-tail -6 "$tmp/stat.log" | grep -q "packets: 100/.*100/.* 0 lost" || fail "stat: $(tail -6 "$tmp/stat.log")"
+tail -8 "$tmp/stat.log" | grep -q "^source -> sink: 100 sent.*100 received.* 0 lost (0.0%)$" || fail "stat: $(tail -8 "$tmp/stat.log")"
 
 echo "record"
 run record record -c 20 -r 200 $sink "$tmp/rec.csv"
@@ -97,8 +97,8 @@ echo "window"
 # out of idle states that take a millisecond to leave, so the window
 # leaves that much margin.
 run window stat -b -c 20 -r 500 --cycle 50ms --window 0:25ms $sink
-tail -8 "$tmp/window.log" | grep -q "packets: 20/.*20/.* 0 lost" || fail "window: $(tail -8 "$tmp/window.log")"
-tail -8 "$tmp/window.log" | grep -q "^  inside: 20," || fail "window: not all inside: $(tail -8 "$tmp/window.log")"
+tail -12 "$tmp/window.log" | grep -q "^source -> sink: 20 sent.*20 received.* 0 lost" || fail "window: $(tail -12 "$tmp/window.log")"
+[ "$(tail -12 "$tmp/window.log" | grep -c "^inside  *20 ")" = 2 ] || fail "window: not all inside: $(tail -12 "$tmp/window.log")"
 run winrec record -c 20 -r 500 --cycle 50ms --window 0:25ms $sink "$tmp/win.csv"
 bad=$(tail -n +2 "$tmp/win.csv" | awk -F, '$7 == "" || $7 < 0 || $7 >= 25000000')
 [ -z "$bad" ] || fail "window: phases outside: $bad"
@@ -109,7 +109,7 @@ echo "observe"
 # Loopback has no gate, so a probe that left inside arrives inside,
 # and none crosses a cycle boundary.
 run observe stat -c 30 -r 333 --cycle 0.05s --window 10000us:20ms --observe $sink
-tail -8 "$tmp/observe.log" | grep -q "^  outside: [0-9]" || fail "observe: $(tail -8 "$tmp/observe.log")"
+tail -8 "$tmp/observe.log" | grep -q "^outside  *[1-9]" || fail "observe: $(tail -8 "$tmp/observe.log")"
 run obsrec record -c 30 -r 333 --cycle 50ms --window 10ms:20ms --observe $sink "$tmp/obs.csv"
 bad=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$9 != 0 || ($10 != "inside" && $10 != "outside") || ($10 == "inside" && ($8 < 10000000 || $8 >= 30000000))')
 [ -z "$bad" ] || fail "observe: $bad"
