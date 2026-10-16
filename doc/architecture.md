@@ -385,13 +385,14 @@ The reverse flow follows the same schedule, which HELLO carries.
 ### Statistics
 
 `stats.c` keeps, per flow: count sent, received, lost, missing tx
-timestamp; min, max, running mean and variance (Welford) for mdev;
-and a log-linear histogram for percentiles. The histogram has one
+timestamp; min, max and a running mean; and a log-linear histogram
+for percentiles. The histogram has one
 bucket per power of two of nanoseconds, split into 128 linear
 sub-buckets, giving better than 1 % resolution from 1 ns up to days,
 in a fixed 58 kB of memory. Percentiles are read by walking the
-buckets. This is the usual HdrHistogram layout, cut down to what is
-needed.
+buckets, and clamped to the largest sample so the tail never reads
+above the maximum. This is the usual HdrHistogram layout, cut down to
+what is needed.
 
 
 Sink
@@ -460,7 +461,7 @@ Code layout
                   of a cyclic schedule; owns the timerfd
       flow.c/h    per-flow sample table, loss timeout, in-order
                   delivery to the consumer
-      stats.c/h   counters, min/max/mean/mdev, histogram, percentiles
+      stats.c/h   counters, min/max/mean, histogram, percentiles
       log.h       err/warn/info/debug to stderr, -v controls level
       tspec.h     int64 ns helpers, timespec conversion
     test/

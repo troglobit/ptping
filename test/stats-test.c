@@ -9,7 +9,7 @@ static void test_counters(void)
 	struct stats st;
 
 	stats_init(&st);
-	check(st.sent == 0 && stats_mdev(&st) == 0 && stats_percentile(&st, 0.5) == 0);
+	check(st.sent == 0 && stats_percentile(&st, 0.5) == 0);
 
 	stats_add(&st, 100, 150);
 	stats_add(&st, TS_NONE, 150);
@@ -21,12 +21,11 @@ static void test_counters(void)
 	check(st.lost == 2);
 	check(st.no_tx == 2);
 	check(st.min == 50 && st.max == 50 && st.mean == 50);
-	check(stats_mdev(&st) == 0);
+	check(stats_percentile(&st, 1.0) == 50);
 }
 
 static void test_moments(void)
 {
-	/* mean 5, population stddev 2 */
 	static const int64_t v[] = { 2, 4, 4, 4, 5, 5, 7, 9 };
 	struct stats st;
 	size_t i;
@@ -36,7 +35,6 @@ static void test_moments(void)
 		stats_add(&st, 0, v[i]);
 	check(st.min == 2 && st.max == 9);
 	check(fabs(st.mean - 5) < 1e-9);
-	check(fabs(stats_mdev(&st) - 2) < 1e-9);
 
 	/* Negative latencies are kept in min/mean, clamped in percentiles. */
 	stats_init(&st);
@@ -73,7 +71,7 @@ static void test_percentiles(void)
 	within_1pct(stats_percentile(&st, 0.5), 50000);
 	within_1pct(stats_percentile(&st, 0.99), 99000);
 	within_1pct(stats_percentile(&st, 0.999), 99900);
-	within_1pct(stats_percentile(&st, 1.0), 100000);
+	check(stats_percentile(&st, 1.0) == 100000);
 
 	/* Seconds range, and a single huge outlier. */
 	stats_init(&st);
@@ -81,13 +79,13 @@ static void test_percentiles(void)
 		stats_add(&st, 0, 2 * NS_PER_S + i * NS_PER_MS);
 	stats_add(&st, 0, 3600 * NS_PER_S);
 	within_1pct(stats_percentile(&st, 0.5), 2 * NS_PER_S + 499 * NS_PER_MS);
-	within_1pct(stats_percentile(&st, 1.0), 3600 * NS_PER_S);
+	check(stats_percentile(&st, 1.0) == 3600 * NS_PER_S);
 	within_1pct(stats_percentile(&st, 0.999), 2 * NS_PER_S + 999 * NS_PER_MS);
 
 	/* Largest representable value does not overflow the index. */
 	stats_init(&st);
 	stats_add(&st, 0, INT64_MAX);
-	check(stats_percentile(&st, 1.0) >= INT64_MAX - INT64_MAX / 100);
+	check(stats_percentile(&st, 1.0) == INT64_MAX);
 }
 
 int main(void)

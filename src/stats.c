@@ -57,7 +57,6 @@ void stats_init(struct stats *st)
 void stats_add(struct stats *st, int64_t tx, int64_t rx)
 {
 	int64_t lat;
-	double delta;
 
 	st->sent++;
 	if (tx == TS_NONE)
@@ -74,21 +73,21 @@ void stats_add(struct stats *st, int64_t tx, int64_t rx)
 	if (lat > st->max)
 		st->max = lat;
 
-	delta = lat - st->mean;
-	st->mean += delta / st->received;
-	st->m2 += delta * (lat - st->mean);
+	st->mean += (lat - st->mean) / st->received;
 
 	/* A clock offset can make the latency negative; the histogram
 	 * is for non-negative values. */
 	hist_add(&st->hist, lat < 0 ? 0 : lat);
 }
 
-double stats_mdev(const struct stats *st)
-{
-	return st->received ? sqrt(st->m2 / st->received) : 0;
-}
-
 int64_t stats_percentile(const struct stats *st, double p)
 {
-	return hist_percentile(&st->hist, st->received, p);
+	int64_t v;
+
+	if (!st->received)
+		return 0;
+
+	/* A bucket's top can lie above the largest sample in it. */
+	v = hist_percentile(&st->hist, st->received, p);
+	return v > st->max ? st->max : v;
 }

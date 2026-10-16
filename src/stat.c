@@ -68,14 +68,14 @@ static void packets_line(struct stat_priv *p, const struct source *src,
 static void table_row(struct stat_priv *p, const char *label, const struct stats *st)
 {
 	if (st->received)
-		line(p, "%-*s %7llu %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f",
+		line(p, "%-*s %7llu %9.3f %9.3f %9.3f %9.3f %9.3f",
 		     LABEL_WIDTH, label, (unsigned long long)st->received,
-		     us(st->min), us(st->mean), us(st->max), us(stats_mdev(st)),
+		     us(st->min), us(st->mean),
 		     us(stats_percentile(st, 0.99)),
-		     us(stats_percentile(st, 0.999)));
+		     us(stats_percentile(st, 0.999)), us(st->max));
 	else
-		line(p, "%-*s %7llu %9s %9s %9s %9s %9s %9s",
-		     LABEL_WIDTH, label, 0ULL, "-", "-", "-", "-", "-", "-");
+		line(p, "%-*s %7llu %9s %9s %9s %9s %9s",
+		     LABEL_WIDTH, label, 0ULL, "-", "-", "-", "-", "-");
 }
 
 /* One row for all samples, and one per tag with a window. With two
@@ -127,8 +127,8 @@ static void report(void *priv, const struct source *src, int final)
 		packets_line(p, src, which, seconds, final);
 
 	line(p, "");
-	line(p, "%-*s %7s %9s %9s %9s %9s %9s %9s", LABEL_WIDTH, "latency (us)",
-	     "count", "min", "avg", "max", "mdev", "p99", "p99.9");
+	line(p, "%-*s %7s %9s %9s %9s %9s %9s", LABEL_WIDTH, "latency (us)",
+	     "count", "min", "avg", "p99", "p99.9", "max");
 	for (which = 0; which < flows; which++)
 		table_flow(p, src, which);
 

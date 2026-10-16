@@ -22,7 +22,7 @@ struct stats {
 
 	/* Over received samples only. */
 	int64_t min, max;
-	double mean, m2;	/* Welford */
+	double mean;
 	struct hist hist;
 };
 
@@ -31,11 +31,10 @@ void stats_init(struct stats *st);
 /* Account for a resolved sample. Pass TS_NONE for a missing side. */
 void stats_add(struct stats *st, int64_t tx, int64_t rx);
 
-double stats_mdev(const struct stats *st);
-
 /* Smallest latency that at least fraction p (0 < p <= 1) of the
- * received samples are at or below. Negative latencies, which a clock
- * offset can produce, count as 0 here but not in min/max/mean. */
+ * received samples are at or below, never above the maximum. Negative
+ * latencies, which a clock offset can produce, count as 0 here but
+ * not in min/max/mean. */
 int64_t stats_percentile(const struct stats *st, double p);
 
 #endif

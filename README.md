@@ -118,8 +118,8 @@ current session:
     user@start:~# ptping stat fe80::dead:1%eth0
     source -> sink: 2043 sent (101 pps), 2040 received (100 pps), 3 lost (0.1%)
 
-    latency (us)     count       min       avg       max      mdev       p99     p99.9
-    all               2040     2.350     2.390     2.468     0.054     2.421     2.460
+    latency (us)     count       min       avg       p99     p99.9       max
+    all               2040     2.350     2.390     2.421     2.460     2.468
 
 With a window, the table gets a row each for the probes that left
 inside and outside of it, and with `--bidir` a second block of rows
@@ -175,7 +175,7 @@ Commands:
   stat [<source-options>] <SINK-ADDRESS>
       Continuously send probe packets to the sink and track key
       statistics about packets transmitted, received and lost,
-      min/avg/max/mdev and p99/p99.9 latencies, etc.
+      min, average, p99, p99.9 and max latencies, etc.
 
   record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
       Record latency measurements and write the results to
