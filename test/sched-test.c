@@ -88,6 +88,43 @@ static void test_window(void)
 	check(sched_init(&s, 100000, NULL, -1) == -1);
 }
 
+static void test_observe(void)
+{
+	struct sched_window win = {
+		.cycle_ns = 1000000,
+		.base = 7,
+		.offset_ns = 200000,
+		.len_ns = 300000,
+		.observe = 1,
+	};
+	struct sched s;
+	int64_t t;
+
+	/* Observing: the rate runs through the cycle, on the plain
+	 * clock, but phases and cycles are still computed. */
+	check(!sched_init(&s, 100000, &win, 0));
+	check(s.clock == CLOCK_MONOTONIC);
+	t = sched_next(&s);
+	check(sched_next(&s) == t + 100000);
+	check(sched_next(&s) == t + 200000);
+
+	check(sched_phase(&s, win.base + 3 * 1000000 + 456, TS_MODE_HW) == 456);
+	check(sched_cycle(&s, win.base + 3 * 1000000 + 456, TS_MODE_HW) == 3);
+	check(sched_cycle(&s, win.base - 1, TS_MODE_HW) == -1);
+	check(sched_phase(&s, win.base - 1, TS_MODE_HW) == 999999);
+	check(sched_cycle(&s, TS_NONE, TS_MODE_HW) == TS_NONE);
+
+	/* Tags are the two in-or-out observations, nothing more. */
+	check(sched_tag(&s, 250000, 300000) == TAG_CONFORMANT);
+	check(sched_tag(&s, 100000, 300000) == TAG_EARLY);
+	check(sched_tag(&s, 250000, 600000) == TAG_LATE);
+	check(sched_tag(&s, 100000, 600000) == TAG_NONCONFORMANT);
+	check(sched_tag(&s, 499999, 200000) == TAG_CONFORMANT);
+	check(sched_tag(&s, 500000, 199999) == TAG_NONCONFORMANT);
+	check(sched_tag(&s, TS_NONE, 300000) == TAG_NONE);
+	check(sched_tag(&s, 300000, TS_NONE) == TAG_NONE);
+}
+
 static void test_txtime(void)
 {
 	struct sched s;
@@ -104,6 +141,7 @@ int main(void)
 {
 	test_rate();
 	test_window();
+	test_observe();
 	test_txtime();
 	return 0;
 }

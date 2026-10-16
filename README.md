@@ -271,6 +271,20 @@ Schedule options:
       By default, 0: cycles are aligned to multiples of the cycle time
       since the epoch.
 
+  --observe
+      Keep sending throughout the cycle as if there were no window,
+      and instead tag every probe by what was observed of it: whether
+      it left the source inside the window, and whether it arrived at
+      the sink inside it. `stat` reports each tag separately, `record`
+      writes it per sample.
+
+      This shows what the network does to the class at every phase of
+      the cycle, and does not depend on the source placing its
+      transmissions precisely. Pick a rate whose period does not
+      divide the cycle, so that the probes walk through every phase
+      rather than hitting the same one each cycle; 1 ms plus 7 us
+      covers a 1 ms cycle in 143 probes.
+
   --txtime <lead>
       Hand each probe to the kernel <lead> nanoseconds before it is
       due, with its launch time set, for an etf qdisc to send it on
@@ -283,9 +297,22 @@ Schedule options:
       deep idle states, from which waking up alone takes over 100 us.
 ```
 
-The transmission timestamp of each probe tells where in the cycle it
-actually left: `stat` counts probes that left outside the window, and
-`record` writes the phase in a column of its own.
+The timestamps of each probe tell where in the cycle it actually left
+and arrived. From them, each probe gets one of four tags:
+
+| Tag            | Left the source | Arrived at the sink |
+|----------------|-----------------|---------------------|
+| conformant     | inside          | inside              |
+| early          | outside         | inside              |
+| late           | inside          | outside             |
+| non-conformant | outside         | outside             |
+
+The tags say what happened, not why; with a gate in the path, "early"
+probes are the ones it held until the window opened, and
+"non-conformant" ones passed while it should have been closed.
+`record` also writes both phases and how many cycle boundaries lie
+between them, so that a probe held over to the next window can be
+told from one that got through in the same cycle.
 
 
 Building

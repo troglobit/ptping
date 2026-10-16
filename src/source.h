@@ -60,11 +60,23 @@ struct source {
 int source_run(struct source *src, struct opts *opts,
 	       const struct source_ops *ops, void *priv);
 
-/* Where in the cycle a probe was transmitted, or TS_NONE without a
- * window or a transmission timestamp. */
-static inline int64_t source_tx_phase(const struct source *src, int64_t tx)
+/* Where in the cycle a timestamp of this session falls, and which
+ * cycle; TS_NONE without a window or a timestamp. */
+static inline int64_t source_phase(const struct source *src, int64_t ts)
 {
-	return sched_phase(&src->sched, tx, src->mode);
+	return sched_phase(&src->sched, ts, src->mode);
+}
+
+static inline int64_t source_cycle(const struct source *src, int64_t ts)
+{
+	return sched_cycle(&src->sched, ts, src->mode);
+}
+
+static inline enum sched_tag source_tag(const struct source *src,
+					const struct flow_sample *s)
+{
+	return sched_tag(&src->sched, source_phase(src, s->tx),
+			 source_phase(src, s->rx));
 }
 
 #endif

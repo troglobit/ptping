@@ -19,6 +19,7 @@
 
 static volatile sig_atomic_t interrupts;
 
+
 static void on_signal(int sig)
 {
 	interrupts++;

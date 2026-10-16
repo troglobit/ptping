@@ -40,6 +40,8 @@ static const char *usage_text =
 "      --cycle NS                Cycle time of the schedule\n"
 "      --window OFFSET:LENGTH    Send only within this part of the cycle\n"
 "      --base-time NS            Cycles start here (default: 0)\n"
+"      --observe                 Send throughout the cycle anyway, and tag\n"
+"                                each probe by where it left and arrived\n"
 "      --txtime LEAD             Set launch times for the etf qdisc, handing\n"
 "                                probes to the kernel LEAD ns early\n";
 
@@ -117,6 +119,7 @@ enum {
 	OPT_CYCLE = 256,
 	OPT_WINDOW,
 	OPT_BASE_TIME,
+	OPT_OBSERVE,
 	OPT_TXTIME,
 };
 
@@ -140,6 +143,7 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 		{ "cycle",        required_argument, NULL, OPT_CYCLE },
 		{ "window",       required_argument, NULL, OPT_WINDOW },
 		{ "base-time",    required_argument, NULL, OPT_BASE_TIME },
+		{ "observe",      no_argument,       NULL, OPT_OBSERVE },
 		{ "txtime",       required_argument, NULL, OPT_TXTIME },
 		{ NULL }
 	};
@@ -201,6 +205,9 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 		case OPT_BASE_TIME:
 			opts->win.base = parse_ns("--base-time", optarg);
 			break;
+		case OPT_OBSERVE:
+			opts->win.observe = 1;
+			break;
 		case OPT_TXTIME:
 			opts->txtime_lead_ns = parse_ns("--txtime", optarg);
 			break;
@@ -212,8 +219,10 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 
 	if (opts->win.cycle_ns && opts->win.offset_ns + opts->win.len_ns > opts->win.cycle_ns)
 		die("--window must fit in the cycle");
-	if (!opts->win.cycle_ns && (opts->win.len_ns || opts->win.base))
-		die("--window and --base-time need --cycle");
+	if (!opts->win.cycle_ns && (opts->win.len_ns || opts->win.base || opts->win.observe))
+		die("--window, --base-time and --observe need --cycle");
+	if (opts->win.cycle_ns && !opts->win.len_ns)
+		die("--cycle needs --window");
 
 	opts->argc = argc - optind;
 	opts->argv = argv + optind;

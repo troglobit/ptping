@@ -86,7 +86,7 @@ tail -6 "$tmp/stat.log" | grep -q "packets: 100/.*100/.* 0 lost" || fail "stat: 
 echo "record"
 run record record -c 20 -r 200 $sink "$tmp/rec.csv"
 [ "$(wc -l <"$tmp/rec.csv")" = 21 ] || fail "record: $(wc -l <"$tmp/rec.csv") lines"
-[ "$(head -1 "$tmp/rec.csv")" = "flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns" ] || fail "record: header"
+[ "$(head -1 "$tmp/rec.csv")" = "flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns,rx_phase_ns,cycles,tag" ] || fail "record: header"
 missing=$(cut -d, -f1-6 "$tmp/rec.csv" | grep -E ",,|,$" || true)
 [ -z "$missing" ] || fail "record: missing fields: $missing"
 [ "$(tail -1 "$tmp/rec.csv" | cut -d, -f1,2)" = "fwd,19" ] || fail "record: last line $(tail -1 "$tmp/rec.csv")"
@@ -97,10 +97,25 @@ echo "window"
 # out of idle states that take a millisecond to leave, so the window
 # leaves that much margin.
 run window stat -b -c 20 -r 500 --cycle 50000000 --window 0:25000000 $sink
-tail -6 "$tmp/window.log" | grep -q "packets: 20/.*20/.* 0 lost.* 0 outside" || fail "window: $(tail -6 "$tmp/window.log")"
+tail -8 "$tmp/window.log" | grep -q "packets: 20/.*20/.* 0 lost" || fail "window: $(tail -8 "$tmp/window.log")"
+tail -8 "$tmp/window.log" | grep -q "^  conformant: 20," || fail "window: not all conformant: $(tail -8 "$tmp/window.log")"
 run winrec record -c 20 -r 500 --cycle 50000000 --window 0:25000000 $sink "$tmp/win.csv"
 bad=$(tail -n +2 "$tmp/win.csv" | awk -F, '$7 == "" || $7 < 0 || $7 >= 25000000')
 [ -z "$bad" ] || fail "window: phases outside: $bad"
+
+echo "observe"
+# Sent throughout a 50 ms cycle at a period that does not divide it,
+# every probe is tagged by where it left and arrived relative to the
+# window. Loopback has no gate, so each probe is either inside at both
+# ends or outside at both, and none crosses a cycle boundary.
+run observe stat -c 30 -r 333 --cycle 50000000 --window 10000000:20000000 --observe $sink
+tail -8 "$tmp/observe.log" | grep -q "^  early: -" || fail "observe: $(tail -8 "$tmp/observe.log")"
+tail -8 "$tmp/observe.log" | grep -q "^  late: -" || fail "observe: $(tail -8 "$tmp/observe.log")"
+run obsrec record -c 30 -r 333 --cycle 50000000 --window 10000000:20000000 --observe $sink "$tmp/obs.csv"
+bad=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$9 != 0 || ($10 != "conformant" && $10 != "non-conformant")')
+[ -z "$bad" ] || fail "observe: $bad"
+n=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$10 == "conformant"' | wc -l)
+[ "$n" -gt 5 ] && [ "$n" -lt 25 ] || fail "observe: $n of 30 conformant"
 
 echo "refusal"
 refuse size "smallest frame" stat -c 1 -s 50 $sink

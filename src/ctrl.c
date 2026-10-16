@@ -47,7 +47,7 @@ size_t ctrl_encode(const struct ctrl_msg *msg, uint8_t *buf)
 		put32(p + 8, msg->hello.rev.count);
 		put16(p + 12, msg->hello.rev.size);
 		p[14] = msg->hello.rev.dscp;
-		p[15] = 0;
+		p[15] = !!msg->hello.rev.win.observe;
 		put64(p + 16, msg->hello.rev.win.cycle_ns);
 		put64(p + 24, msg->hello.rev.win.base);
 		put64(p + 32, msg->hello.rev.win.offset_ns);
@@ -118,6 +118,7 @@ ssize_t ctrl_decode(const uint8_t *buf, size_t len, struct ctrl_msg *msg)
 		msg->hello.rev.count = get32(p + 8);
 		msg->hello.rev.size = get16(p + 12);
 		msg->hello.rev.dscp = p[14];
+		msg->hello.rev.win.observe = p[15];
 		msg->hello.rev.win.cycle_ns = get64(p + 16);
 		msg->hello.rev.win.base = get64(p + 24);
 		msg->hello.rev.win.offset_ns = get64(p + 32);

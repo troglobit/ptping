@@ -228,7 +228,7 @@ HELLO:
     uint32_t count;          /* 0: until BYE */
     uint16_t size;
     uint8_t  dscp;
-    uint8_t  reserved;
+    uint8_t  observe;        /* send throughout the cycle, only tag */
     int64_t  cycle_ns;       /* 0: no window */
     int64_t  base_time;      /* CLOCK_TAI */
     int64_t  window_offset_ns;
@@ -347,11 +347,18 @@ early and the qdisc, or the NIC with offload, releases the frame at
 the due time. This is opt-in, since without `etf` the kernel would
 send as soon as it got the frame.
 
-Where a probe really left is known from its transmission timestamp,
-whose phase in the cycle the consumers report: `stat` counts probes
-that left outside the window, `record` writes the phase per sample. A
-hardware timestamp is in the PHC's timescale already; a software one
-is in `CLOCK_REALTIME` and gets the TAI offset added.
+A window can also be observed instead of enforced: the sender runs
+at its rate throughout the cycle, on the plain clock, and the window
+only serves to tag each sample by what the timestamps show, whether
+it left inside the window and whether it arrived inside it. The four
+tags, conformant, early, late and non-conformant, are observations,
+not verdicts; interpretation is left to the reader. `record` writes
+both phases, the number of cycle boundaries between them and the
+tag; `stat` keeps a statistics block per tag. A hardware timestamp
+is in the PHC's timescale already; a software one is in
+`CLOCK_REALTIME` and gets the TAI offset added. Observing needs no
+placement precision from the source, so it works where enforcing
+does not.
 
 The reverse flow follows the same schedule, which HELLO carries.
 
@@ -372,9 +379,9 @@ The reverse flow follows the same schedule, which HELLO carries.
 
 - `record` writes one CSV line per sample, in sequence order within
   each flow, with the header
-  `flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns`. Missing
-  fields are empty, and the phase is only there with a schedule.
-  Lines are flushed every report interval.
+  `flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns,rx_phase_ns,cycles,tag`.
+  Missing fields are empty, and the last four are only there with a
+  schedule. Lines are flushed every report interval.
 
 ### Statistics
 

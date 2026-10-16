@@ -9,11 +9,14 @@
 #include "sched.h"
 #include "tspec.h"
 
+static int64_t floor_div(int64_t a, int64_t m)
+{
+	return a / m - (a % m < 0);
+}
+
 static int64_t floor_mod(int64_t a, int64_t m)
 {
-	int64_t r = a % m;
-
-	return r < 0 ? r + m : r;
+	return a - floor_div(a, m) * m;
 }
 
 int sched_in_window(const struct sched *s, int64_t phase)
@@ -64,12 +67,19 @@ int sched_init(struct sched *s, int64_t period_ns,
 	    (!s->win.len_ns || s->win.offset_ns + s->win.len_ns > s->win.cycle_ns))
 		return -1;
 
-	if (s->win.cycle_ns || txtime_lead_ns) {
-		s->clock = CLOCK_REALTIME;
+	/* Phases need the TAI offset even when only observing. */
+	if (s->win.cycle_ns) {
 		s->tai_offset = ts_now(CLOCK_TAI) - ts_now(CLOCK_REALTIME);
 		if (!s->tai_offset)
 			warn("CLOCK_TAI is not offset from CLOCK_REALTIME; "
 			     "is the UTC offset set?");
+	}
+
+	/* Placing probes in network time takes a timer in that time,
+	 * and all the precision the host can give. */
+	if ((s->win.cycle_ns && !s->win.observe) || txtime_lead_ns) {
+		s->clock = CLOCK_REALTIME;
+		s->timer_offset = s->tai_offset;
 
 		/* The default timer slack is 50 us, which is most of the
 		 * placement error a window test cares about. */
@@ -81,7 +91,7 @@ int sched_init(struct sched *s, int64_t period_ns,
 	if (s->fd < 0)
 		return -1;
 
-	s->next = ts_now(s->clock) + s->tai_offset;
+	s->next = ts_now(s->clock) + s->timer_offset;
 	return 0;
 }
 
@@ -111,7 +121,7 @@ int64_t sched_next(struct sched *s)
 {
 	int64_t due = s->next;
 
-	if (s->win.cycle_ns)
+	if (s->win.cycle_ns && !s->win.observe)
 		due = align(s, due);
 
 	s->next = due + s->period_ns;
@@ -124,7 +134,7 @@ void sched_arm(struct sched *s)
 
 	s->due = sched_next(s);
 	its = (struct itimerspec){
-		.it_value = ts_to_timespec(s->due - s->tai_offset - s->txtime_lead_ns),
+		.it_value = ts_to_timespec(s->due - s->timer_offset - s->txtime_lead_ns),
 	};
 
 	if (timerfd_settime(s->fd, TFD_TIMER_ABSTIME, &its, NULL))
@@ -136,12 +146,50 @@ int64_t sched_txtime(const struct sched *s)
 	return s->txtime_lead_ns ? s->due : TS_NONE;
 }
 
-int64_t sched_phase(const struct sched *s, int64_t ts, enum ts_mode mode)
+/* A timestamp's offset from the base time, in the schedule's clock,
+ * or TS_NONE. */
+static int64_t since_base(const struct sched *s, int64_t ts, enum ts_mode mode)
 {
 	if (!s->win.cycle_ns || ts == TS_NONE)
 		return TS_NONE;
 	if (mode == TS_MODE_SW)
 		ts += s->tai_offset;
 
-	return floor_mod(ts - s->win.base, s->win.cycle_ns);
+	return ts - s->win.base;
+}
+
+int64_t sched_phase(const struct sched *s, int64_t ts, enum ts_mode mode)
+{
+	int64_t t = since_base(s, ts, mode);
+
+	return t == TS_NONE ? TS_NONE : floor_mod(t, s->win.cycle_ns);
+}
+
+int64_t sched_cycle(const struct sched *s, int64_t ts, enum ts_mode mode)
+{
+	int64_t t = since_base(s, ts, mode);
+
+	return t == TS_NONE ? TS_NONE : floor_div(t, s->win.cycle_ns);
+}
+
+const char *const sched_tag_names[SCHED_TAGS] = {
+	[TAG_NONE] = "",
+	[TAG_CONFORMANT] = "conformant",
+	[TAG_EARLY] = "early",
+	[TAG_LATE] = "late",
+	[TAG_NONCONFORMANT] = "non-conformant",
+};
+
+enum sched_tag sched_tag(const struct sched *s, int64_t tx_phase, int64_t rx_phase)
+{
+	int tx_in, rx_in;
+
+	if (tx_phase == TS_NONE || rx_phase == TS_NONE)
+		return TAG_NONE;
+
+	tx_in = sched_in_window(s, tx_phase);
+	rx_in = sched_in_window(s, rx_phase);
+	if (tx_in)
+		return rx_in ? TAG_CONFORMANT : TAG_LATE;
+	return rx_in ? TAG_EARLY : TAG_NONCONFORMANT;
 }
