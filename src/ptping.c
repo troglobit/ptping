@@ -31,19 +31,22 @@ static const char *usage_text =
 "  -b, --bidir                   Also measure sink to source\n"
 "  -c, --count N                 Stop after N probes\n"
 "  -d, --dscp VAL|csN            DSCP of probes (default: cs5)\n"
-"  -i, --interval SECONDS        Time between reports (default: 1)\n"
+"  -i, --interval TIME           Time between reports (default: 1s)\n"
 "  -r, --rate PPS                Probes per second (default: 100)\n"
 "  -s, --size BYTES              Frame size on the wire (default: minimum)\n"
-"  -W, --timeout SECONDS         Time to wait for a probe (default: 1)\n"
+"  -W, --timeout TIME            Time to wait for a probe (default: 1s)\n"
 "\n"
-"Schedule options (times in nanoseconds, CLOCK_TAI):\n"
-"      --cycle NS                Cycle time of the schedule\n"
+"Schedule options (CLOCK_TAI):\n"
+"      --cycle TIME              Cycle time of the schedule\n"
 "      --window OFFSET:LENGTH    Send only within this part of the cycle\n"
-"      --base-time NS            Cycles start here (default: 0)\n"
+"      --base-time TIME          Cycles start here (default: 0)\n"
 "      --observe                 Send throughout the cycle anyway, and tag\n"
 "                                each probe by where it left and arrived\n"
-"      --txtime LEAD             Set launch times for the etf qdisc, handing\n"
-"                                probes to the kernel LEAD ns early\n";
+"      --txtime TIME             Set launch times for the etf qdisc, handing\n"
+"                                probes to the kernel this much early\n"
+"\n"
+"A TIME takes a unit, ns, us, ms or s, and decimals: 1.5ms. Without a\n"
+"unit, the schedule options are in nanoseconds and the rest in seconds.\n";
 
 static void usage(int status)
 {
@@ -66,45 +69,72 @@ static unsigned long parse_ulong(const char *opt, const char *arg,
 	return val;
 }
 
-static int64_t parse_ns(const char *opt, const char *arg)
+/* A time of at least min_ns, with an optional unit, ns, us, ms or
+ * s, and decimals: "1.5ms". Without a unit it is in unit_ns. Returns
+ * nanoseconds. Integers are parsed as such, so an absolute nanosecond
+ * timestamp stays exact. */
+static int64_t parse_time(const char *opt, const char *arg, int64_t unit_ns,
+			  int64_t min_ns)
 {
-	long long val;
-	char *end;
+	static const struct { const char *name; int64_t ns; } units[] = {
+		{ "ns", 1 }, { "us", NS_PER_US }, { "ms", NS_PER_MS }, { "s", NS_PER_S },
+	};
+	int64_t whole, frac = 0, scale = 1, val;
+	const char *p = arg;
+	char *num_end;
+	unsigned i, digits;
 
 	errno = 0;
-	val = strtoll(arg, &end, 0);
-	if (errno || *end || end == arg || val < 0)
-		die("%s: expected a number of nanoseconds, got \"%s\"", opt, arg);
+	whole = strtoll(p, &num_end, 10);
+	if (errno || whole < 0)
+		die("%s: expected a time, got \"%s\"", opt, arg);
+	digits = num_end - p;
+	p = num_end;
+
+	if (*p == '.') {
+		for (p++; *p >= '0' && *p <= '9'; p++, digits++) {
+			if (scale < NS_PER_S) {
+				frac = frac * 10 + (*p - '0');
+				scale *= 10;
+			}
+		}
+	}
+	if (!digits)
+		die("%s: expected a time, got \"%s\"", opt, arg);
+
+	for (i = 0; i < sizeof(units) / sizeof(units[0]); i++) {
+		size_t n = strlen(units[i].name);
+
+		if (!strncmp(p, units[i].name, n)) {
+			unit_ns = units[i].ns;
+			p += n;
+			break;
+		}
+	}
+
+	if (*p)
+		die("%s: expected a time, got \"%s\"", opt, arg);
+	if (whole > INT64_MAX / unit_ns)
+		die("%s: \"%s\" is too large", opt, arg);
+
+	val = whole * unit_ns + frac * unit_ns / scale;
+	if (val < min_ns)
+		die("%s: must be at least %lld ns", opt, (long long)min_ns);
 
 	return val;
 }
 
-/* "OFFSET:LENGTH" */
-static void parse_window(const char *arg, struct sched_window *win)
+/* "OFFSET:LENGTH"; arg is split in place. */
+static void parse_window(char *arg, struct sched_window *win)
 {
-	char *colon;
+	char *colon = strchr(arg, ':');
 
-	errno = 0;
-	win->offset_ns = strtoll(arg, &colon, 0);
-	if (errno || colon == arg || *colon != ':' || win->offset_ns < 0)
+	if (!colon)
 		die("--window: expected OFFSET:LENGTH, got \"%s\"", arg);
 
-	win->len_ns = parse_ns("--window", colon + 1);
-	if (!win->len_ns)
-		die("--window: the length must not be zero");
-}
-
-static int64_t parse_seconds(const char *opt, const char *arg)
-{
-	double val;
-	char *end;
-
-	errno = 0;
-	val = strtod(arg, &end);
-	if (errno || *end || val <= 0 || val > 86400)
-		die("%s: expected a number of seconds, got \"%s\"", opt, arg);
-
-	return (int64_t)(val * NS_PER_S);
+	*colon = '\0';
+	win->offset_ns = parse_time("--window", arg, 1, 0);
+	win->len_ns = parse_time("--window", colon + 1, 1, 1);
 }
 
 static uint8_t parse_dscp(const char *arg)
@@ -184,7 +214,7 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 			opts->dscp = parse_dscp(optarg);
 			break;
 		case 'i':
-			opts->report_ns = parse_seconds("--interval", optarg);
+			opts->report_ns = parse_time("--interval", optarg, NS_PER_S, 1);
 			break;
 		case 'r':
 			opts->period_ns = NS_PER_S /
@@ -194,22 +224,22 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 			opts->size = parse_ulong("--size", optarg, 1, 9000);
 			break;
 		case 'W':
-			opts->timeout_ns = parse_seconds("--timeout", optarg);
+			opts->timeout_ns = parse_time("--timeout", optarg, NS_PER_S, 1);
 			break;
 		case OPT_CYCLE:
-			opts->win.cycle_ns = parse_ns("--cycle", optarg);
+			opts->win.cycle_ns = parse_time("--cycle", optarg, 1, 1);
 			break;
 		case OPT_WINDOW:
 			parse_window(optarg, &opts->win);
 			break;
 		case OPT_BASE_TIME:
-			opts->win.base = parse_ns("--base-time", optarg);
+			opts->win.base = parse_time("--base-time", optarg, 1, 0);
 			break;
 		case OPT_OBSERVE:
 			opts->win.observe = 1;
 			break;
 		case OPT_TXTIME:
-			opts->txtime_lead_ns = parse_ns("--txtime", optarg);
+			opts->txtime_lead_ns = parse_time("--txtime", optarg, 1, 1);
 			break;
 
 		default:

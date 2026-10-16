@@ -104,7 +104,7 @@ With a schedule, probes are only sent while a chosen window of the
 cycle is open. To send one probe per 1 ms cycle, 200 us after the
 cycle starts, through a gate that is open from 150 us to 350 us:
 
-    user@start:~# ptping stat -r 1000 --cycle 1000000 --window 200000:1000 fe80::dead:1%eth0
+    user@start:~# ptping stat -r 1000 --cycle 1ms --window 200us:1us fe80::dead:1%eth0
 
 Shift the window across the cycle to find where the gate opens and
 closes, and compare the latency inside and outside of it.
@@ -218,8 +218,8 @@ Source options:
 
       By default, CS5 is used.
 
-  -i, --interval <seconds>
-      Print a `stat` report every <seconds>.
+  -i, --interval <time>
+      Print a `stat` report every <time>.
 
       By default, one is printed every second.
 
@@ -238,11 +238,15 @@ Source options:
       By default, the smallest frame that fits a Sync message is used:
       90 bytes over IPv4, 110 bytes over IPv6.
 
-  -W, --timeout <seconds>
+  -W, --timeout <time>
       Consider a probe lost if its reception timestamp has not arrived
-      within <seconds> of sending it.
+      within <time> of sending it.
 
       By default, 1 second.
+
+  Every <time> takes an optional unit, ns, us, ms or s, and decimals,
+  as in 1.5ms. Without a unit, the schedule options below are in
+  nanoseconds and the two above in seconds.
 
 Schedule options:
 
@@ -252,20 +256,20 @@ Schedule options:
   window to open. A window shorter than the time between probes thus
   gives one probe per cycle, at the window's offset.
 
-  All times are in nanoseconds. The schedule is kept in CLOCK_TAI,
+  The schedule is kept in CLOCK_TAI,
   which is the PHC's timescale when ptp4l and phc2sys are running,
   and the same timescale that tc's taprio uses; see "Clock
   synchronization" above for what the sending host must run. The
   reverse flow of --bidir follows the same schedule.
 
-  --cycle <ns>
+  --cycle <time>
       Cycle time of the schedule.
 
   --window <offset>:<length>
       Send only between <offset> and <offset> + <length> into each
       cycle.
 
-  --base-time <ns>
+  --base-time <time>
       Cycles start at this time, in CLOCK_TAI, as for tc's taprio.
 
       By default, 0: cycles are aligned to multiples of the cycle time
@@ -282,14 +286,14 @@ Schedule options:
       the cycle, and does not depend on the source placing its
       transmissions precisely. Pick a rate whose period does not
       divide the cycle, so that the probes walk through every phase
-      rather than hitting the same one each cycle; 1 ms plus 7 us
-      covers a 1 ms cycle in 143 probes.
+      rather than hitting the same one each cycle; 997 probes per
+      second walk through a 1 ms cycle in 333 of them.
 
-  --txtime <lead>
-      Hand each probe to the kernel <lead> nanoseconds before it is
-      due, with its launch time set, for an etf qdisc to send it on
-      time. Without etf on the interface the kernel would send early,
-      which is why this is not on by default. Needs CAP_NET_ADMIN.
+  --txtime <time>
+      Hand each probe to the kernel this much before it is due, with
+      its launch time set, for an etf qdisc to send it on time.
+      Without etf on the interface the kernel would send early, which
+      is why this is not on by default. Needs CAP_NET_ADMIN.
 
       Without this, probes are sent from a timer, which places them
       within tens of microseconds of their due time, provided ptping
