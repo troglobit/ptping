@@ -64,7 +64,7 @@ static void report_flow(struct stat_priv *p, const struct source *src,
 	latency_line("latency", st);
 
 	if (src->sched.win.cycle_ns) {
-		for (tag = TAG_CONFORMANT; tag < SCHED_TAGS; tag++)
+		for (tag = TAG_INSIDE; tag < SCHED_TAGS; tag++)
 			latency_line(sched_tag_names[tag], &p->tagged[which][tag]);
 	}
 }
@@ -75,7 +75,9 @@ static void sample(void *priv, const struct source *src, enum ctrl_flow flow,
 	struct stat_priv *p = priv;
 
 	stats_add(&p->stats[flow], s->tx, s->rx);
-	stats_add(&p->tagged[flow][source_tag(src, s)], s->tx, s->rx);
+	if (src->sched.win.cycle_ns)
+		stats_add(&p->tagged[flow][sched_tag(&src->sched, source_phase(src, s->tx))],
+			  s->tx, s->rx);
 }
 
 static void report(void *priv, const struct source *src, int final)

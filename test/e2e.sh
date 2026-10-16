@@ -98,24 +98,23 @@ echo "window"
 # leaves that much margin.
 run window stat -b -c 20 -r 500 --cycle 50ms --window 0:25ms $sink
 tail -8 "$tmp/window.log" | grep -q "packets: 20/.*20/.* 0 lost" || fail "window: $(tail -8 "$tmp/window.log")"
-tail -8 "$tmp/window.log" | grep -q "^  conformant: 20," || fail "window: not all conformant: $(tail -8 "$tmp/window.log")"
+tail -8 "$tmp/window.log" | grep -q "^  inside: 20," || fail "window: not all inside: $(tail -8 "$tmp/window.log")"
 run winrec record -c 20 -r 500 --cycle 50ms --window 0:25ms $sink "$tmp/win.csv"
 bad=$(tail -n +2 "$tmp/win.csv" | awk -F, '$7 == "" || $7 < 0 || $7 >= 25000000')
 [ -z "$bad" ] || fail "window: phases outside: $bad"
 
 echo "observe"
 # Sent throughout a 50 ms cycle at a period that does not divide it,
-# every probe is tagged by where it left and arrived relative to the
-# window. Loopback has no gate, so each probe is either inside at both
-# ends or outside at both, and none crosses a cycle boundary.
+# every probe is tagged by where it left relative to the window.
+# Loopback has no gate, so a probe that left inside arrives inside,
+# and none crosses a cycle boundary.
 run observe stat -c 30 -r 333 --cycle 0.05s --window 10000us:20ms --observe $sink
-tail -8 "$tmp/observe.log" | grep -q "^  early: -" || fail "observe: $(tail -8 "$tmp/observe.log")"
-tail -8 "$tmp/observe.log" | grep -q "^  late: -" || fail "observe: $(tail -8 "$tmp/observe.log")"
+tail -8 "$tmp/observe.log" | grep -q "^  outside: [0-9]" || fail "observe: $(tail -8 "$tmp/observe.log")"
 run obsrec record -c 30 -r 333 --cycle 50ms --window 10ms:20ms --observe $sink "$tmp/obs.csv"
-bad=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$9 != 0 || ($10 != "conformant" && $10 != "non-conformant")')
+bad=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$9 != 0 || ($10 != "inside" && $10 != "outside") || ($10 == "inside" && ($8 < 10000000 || $8 >= 30000000))')
 [ -z "$bad" ] || fail "observe: $bad"
-n=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$10 == "conformant"' | wc -l)
-[ "$n" -gt 5 ] && [ "$n" -lt 25 ] || fail "observe: $n of 30 conformant"
+n=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$10 == "inside"' | wc -l)
+[ "$n" -gt 5 ] && [ "$n" -lt 25 ] || fail "observe: $n of 30 inside"
 
 echo "refusal"
 refuse size "smallest frame" stat -c 1 -s 50 $sink

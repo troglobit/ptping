@@ -72,11 +72,4 @@ static inline int64_t source_cycle(const struct source *src, int64_t ts)
 	return sched_cycle(&src->sched, ts, src->mode);
 }
 
-static inline enum sched_tag source_tag(const struct source *src,
-					const struct flow_sample *s)
-{
-	return sched_tag(&src->sched, source_phase(src, s->tx),
-			 source_phase(src, s->rx));
-}
-
 #endif

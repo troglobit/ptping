@@ -277,10 +277,9 @@ Schedule options:
 
   --observe
       Keep sending throughout the cycle as if there were no window,
-      and instead tag every probe by what was observed of it: whether
-      it left the source inside the window, and whether it arrived at
-      the sink inside it. `stat` reports each tag separately, `record`
-      writes it per sample.
+      and instead tag every probe by whether it left the source inside
+      the window or outside it. `stat` reports the two separately,
+      `record` writes the tag per sample.
 
       This shows what the network does to the class at every phase of
       the cycle, and does not depend on the source placing its
@@ -302,21 +301,13 @@ Schedule options:
 ```
 
 The timestamps of each probe tell where in the cycle it actually left
-and arrived. From them, each probe gets one of four tags:
-
-| Tag            | Left the source | Arrived at the sink |
-|----------------|-----------------|---------------------|
-| conformant     | inside          | inside              |
-| early          | outside         | inside              |
-| late           | inside          | outside             |
-| non-conformant | outside         | outside             |
-
-The tags say what happened, not why; with a gate in the path, "early"
-probes are the ones it held until the window opened, and
-"non-conformant" ones passed while it should have been closed.
-`record` also writes both phases and how many cycle boundaries lie
-between them, so that a probe held over to the next window can be
-told from one that got through in the same cycle.
+and arrived. Each probe is tagged "inside" or "outside" by where it
+left the source relative to the window, and `stat` groups its
+latencies by that tag. The tag says where the probe left, not what
+the network did to it; `record` also writes both phases and how many
+cycle boundaries lie between them, which is what a plot or a later
+analysis needs to tell a probe held over to the next window from one
+that got through in the same cycle.
 
 
 Building

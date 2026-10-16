@@ -174,22 +174,14 @@ int64_t sched_cycle(const struct sched *s, int64_t ts, enum ts_mode mode)
 
 const char *const sched_tag_names[SCHED_TAGS] = {
 	[TAG_NONE] = "",
-	[TAG_CONFORMANT] = "conformant",
-	[TAG_EARLY] = "early",
-	[TAG_LATE] = "late",
-	[TAG_NONCONFORMANT] = "non-conformant",
+	[TAG_INSIDE] = "inside",
+	[TAG_OUTSIDE] = "outside",
 };
 
-enum sched_tag sched_tag(const struct sched *s, int64_t tx_phase, int64_t rx_phase)
+enum sched_tag sched_tag(const struct sched *s, int64_t phase)
 {
-	int tx_in, rx_in;
-
-	if (tx_phase == TS_NONE || rx_phase == TS_NONE)
+	if (phase == TS_NONE)
 		return TAG_NONE;
 
-	tx_in = sched_in_window(s, tx_phase);
-	rx_in = sched_in_window(s, rx_phase);
-	if (tx_in)
-		return rx_in ? TAG_CONFORMANT : TAG_LATE;
-	return rx_in ? TAG_EARLY : TAG_NONCONFORMANT;
+	return sched_in_window(s, phase) ? TAG_INSIDE : TAG_OUTSIDE;
 }

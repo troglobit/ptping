@@ -72,20 +72,16 @@ int sched_in_window(const struct sched *s, int64_t phase);
  * TS_NONE as for sched_phase. */
 int64_t sched_cycle(const struct sched *s, int64_t ts, enum ts_mode mode);
 
-/* What was observed of a probe against the window: where it left and
- * where it arrived, nothing more. */
+/* Whether a phase lies inside the window, as a tag with a name. */
 enum sched_tag {
-	TAG_NONE,		/* no window, or a timestamp missing */
-	TAG_CONFORMANT,		/* left and arrived inside */
-	TAG_EARLY,		/* left outside, arrived inside */
-	TAG_LATE,		/* left inside, arrived outside */
-	TAG_NONCONFORMANT,	/* left and arrived outside */
+	TAG_NONE,		/* no window, or no timestamp */
+	TAG_INSIDE,
+	TAG_OUTSIDE,
 	SCHED_TAGS
 };
 
 extern const char *const sched_tag_names[SCHED_TAGS];
 
-/* From the phases sched_phase gives for the tx and rx timestamps. */
-enum sched_tag sched_tag(const struct sched *s, int64_t tx_phase, int64_t rx_phase);
+enum sched_tag sched_tag(const struct sched *s, int64_t phase);
 
 #endif

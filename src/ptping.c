@@ -41,7 +41,7 @@ static const char *usage_text =
 "      --window OFFSET:LENGTH    Send only within this part of the cycle\n"
 "      --base-time TIME          Cycles start here (default: 0)\n"
 "      --observe                 Send throughout the cycle anyway, and tag\n"
-"                                each probe by where it left and arrived\n"
+"                                each probe by where it left\n"
 "      --txtime TIME             Set launch times for the etf qdisc, handing\n"
 "                                probes to the kernel this much early\n"
 "\n"

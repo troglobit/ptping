@@ -114,15 +114,12 @@ static void test_observe(void)
 	check(sched_phase(&s, win.base - 1, TS_MODE_HW) == 999999);
 	check(sched_cycle(&s, TS_NONE, TS_MODE_HW) == TS_NONE);
 
-	/* Tags are the two in-or-out observations, nothing more. */
-	check(sched_tag(&s, 250000, 300000) == TAG_CONFORMANT);
-	check(sched_tag(&s, 100000, 300000) == TAG_EARLY);
-	check(sched_tag(&s, 250000, 600000) == TAG_LATE);
-	check(sched_tag(&s, 100000, 600000) == TAG_NONCONFORMANT);
-	check(sched_tag(&s, 499999, 200000) == TAG_CONFORMANT);
-	check(sched_tag(&s, 500000, 199999) == TAG_NONCONFORMANT);
-	check(sched_tag(&s, TS_NONE, 300000) == TAG_NONE);
-	check(sched_tag(&s, 300000, TS_NONE) == TAG_NONE);
+	/* The tag is where the probe left, nothing more. */
+	check(sched_tag(&s, 200000) == TAG_INSIDE);
+	check(sched_tag(&s, 499999) == TAG_INSIDE);
+	check(sched_tag(&s, 199999) == TAG_OUTSIDE);
+	check(sched_tag(&s, 500000) == TAG_OUTSIDE);
+	check(sched_tag(&s, TS_NONE) == TAG_NONE);
 }
 
 static void test_txtime(void)

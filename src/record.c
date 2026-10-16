@@ -37,7 +37,7 @@ static void sample(void *priv, const struct source *src, enum ctrl_flow flow,
 		(unsigned long long)s->seq, field(s->tx, tx), field(s->rx, rx),
 		(long long)s->correction, field(latency, lat),
 		field(tx_phase, txp), field(rx_phase, rxp), field(cycles, cyc),
-		sched_tag_names[sched_tag(&src->sched, tx_phase, rx_phase)]);
+		sched_tag_names[sched_tag(&src->sched, tx_phase)]);
 }
 
 static void report(void *priv, const struct source *src, int final)

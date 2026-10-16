@@ -349,12 +349,11 @@ send as soon as it got the frame.
 
 A window can also be observed instead of enforced: the sender runs
 at its rate throughout the cycle, on the plain clock, and the window
-only serves to tag each sample by what the timestamps show, whether
-it left inside the window and whether it arrived inside it. The four
-tags, conformant, early, late and non-conformant, are observations,
-not verdicts; interpretation is left to the reader. `record` writes
-both phases, the number of cycle boundaries between them and the
-tag; `stat` keeps a statistics block per tag. A hardware timestamp
+only serves to tag each sample by whether it left inside the window
+or outside it. The tag is an observation, not a verdict;
+interpretation is left to the reader. `record` writes both phases,
+the number of cycle boundaries between them and the tag; `stat`
+keeps a statistics block per tag. A hardware timestamp
 is in the PHC's timescale already; a software one is in
 `CLOCK_REALTIME` and gets the TAI offset added. Observing needs no
 placement precision from the source, so it works where enforcing
