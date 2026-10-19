@@ -228,8 +228,11 @@ Source options:
 
       By default, one is printed every second.
 
-  -r, --rate <rate>
-      Send <rate> packets per second.
+  -r, --rate <rate>|<time>
+      Send <rate> packets per second, or one packet every <time>. A
+      rate takes decimals and an optional hz: 100, 4.7hz. A time takes
+      a unit, as below: 10ms, 1.337ms. At most one packet per
+      microsecond.
 
       By default, 100 pps are sent.
 
@@ -292,8 +295,8 @@ Schedule options:
       the cycle, and does not depend on the source placing its
       transmissions precisely. Pick a rate whose period does not
       divide the cycle, so that the probes walk through every phase
-      rather than hitting the same one each cycle; 997 probes per
-      second walk through a 1 ms cycle in 333 of them.
+      rather than hitting the same one each cycle; a gap of 1.003ms
+      walks through a 1 ms cycle in 333 probes.
 
   --txtime <time>
       Hand each probe to the kernel this much before it is due, with

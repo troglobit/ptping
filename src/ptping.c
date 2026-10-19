@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <getopt.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +33,8 @@ static const char *usage_text =
 "  -c, --count N                 Stop after N probes\n"
 "  -d, --dscp VAL|csN            DSCP of probes (default: cs5)\n"
 "  -i, --interval TIME           Time between reports (default: 1s)\n"
-"  -r, --rate PPS                Probes per second (default: 100)\n"
+"  -r, --rate RATE|TIME          Probes per second, or the time between\n"
+"                                them: 100, 4.7hz, 10ms (default: 100hz)\n"
 "  -s, --size BYTES              Frame size on the wire (default: minimum)\n"
 "  -W, --timeout TIME            Time to wait for a probe (default: 1s)\n"
 "\n"
@@ -123,6 +125,29 @@ static int64_t parse_time(const char *opt, const char *arg, int64_t unit_ns,
 		die("%s: must be at least %lld ns", opt, (long long)min_ns);
 
 	return val;
+}
+
+/* The time between probes, from a rate, "100" or "4.7hz", or from
+ * the gap itself, "10ms" or "1.337ms". At most one per microsecond. */
+static int64_t parse_period(const char *arg)
+{
+	int64_t period;
+	double hz;
+	char *end;
+
+	errno = 0;
+	hz = strtod(arg, &end);
+	if (*end && strcmp(end, "hz"))
+		period = parse_time("--rate", arg, 1, 0);
+	else if (errno || end == arg || hz <= 0)
+		die("--rate: expected a rate or a time, got \"%s\"", arg);
+	else
+		period = llround(NS_PER_S / hz);
+
+	if (period < NS_PER_US)
+		die("--rate: at most one probe per microsecond");
+
+	return period;
 }
 
 /* "START-END" or "START+LENGTH"; arg is split in place. */
@@ -224,8 +249,7 @@ static void opts_parse(struct opts *opts, int argc, char **argv)
 			opts->report_ns = parse_time("--interval", optarg, NS_PER_S, 1);
 			break;
 		case 'r':
-			opts->period_ns = NS_PER_S /
-				parse_ulong("--rate", optarg, 1, 1000000);
+			opts->period_ns = parse_period(optarg);
 			break;
 		case 's':
 			opts->size = parse_ulong("--size", optarg, 1, 9000);
