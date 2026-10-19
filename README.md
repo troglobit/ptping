@@ -104,7 +104,7 @@ With a schedule, probes are only sent while a chosen window of the
 cycle is open. To send one probe per 1 ms cycle, 200 us after the
 cycle starts, through a gate that is open from 150 us to 350 us:
 
-    user@start:~# ptping stat -r 1000 --cycle 1ms --window 200us:1us fe80::dead:1%eth0
+    user@start:~# ptping stat -r 1000 --cycle 1ms --window 200us+1us fe80::dead:1%eth0
 
 Shift the window across the cycle to find where the gate opens and
 closes, and compare the latency inside and outside of it.
@@ -270,9 +270,11 @@ Schedule options:
   --cycle <time>
       Cycle time of the schedule.
 
-  --window <offset>:<length>
-      Send only between <offset> and <offset> + <length> into each
-      cycle.
+  --window <start>-<end>
+  --window <start>+<length>
+      Send only between <start> and <end> into each cycle, or for
+      <length> from <start>. 5us-245us and 5us+240us are the same
+      window.
 
   --base-time <time>
       Cycles start at this time, in CLOCK_TAI, as for tc's taprio.

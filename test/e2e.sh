@@ -96,10 +96,10 @@ echo "window"
 # cycle, the last due 18 ms in. Unprivileged, nothing keeps the CPU
 # out of idle states that take a millisecond to leave, so the window
 # leaves that much margin.
-run window stat -b -c 20 -r 500 --cycle 50ms --window 0:25ms $sink
+run window stat -b -c 20 -r 500 --cycle 50ms --window 0-25ms $sink
 tail -12 "$tmp/window.log" | grep -q "^source -> sink: 20 sent.*20 received.* 0 lost" || fail "window: $(tail -12 "$tmp/window.log")"
 [ "$(tail -12 "$tmp/window.log" | grep -c "^inside  *20 ")" = 2 ] || fail "window: not all inside: $(tail -12 "$tmp/window.log")"
-run winrec record -c 20 -r 500 --cycle 50ms --window 0:25ms $sink "$tmp/win.csv"
+run winrec record -c 20 -r 500 --cycle 50ms --window 0+25ms $sink "$tmp/win.csv"
 bad=$(tail -n +2 "$tmp/win.csv" | awk -F, '$7 == "" || $7 < 0 || $7 >= 25000000')
 [ -z "$bad" ] || fail "window: phases outside: $bad"
 
@@ -108,9 +108,9 @@ echo "observe"
 # every probe is tagged by where it left relative to the window.
 # Loopback has no gate, so a probe that left inside arrives inside,
 # and none crosses a cycle boundary.
-run observe stat -c 30 -r 333 --cycle 0.05s --window 10000us:20ms --observe $sink
+run observe stat -c 30 -r 333 --cycle 0.05s --window 10000us+20ms --observe $sink
 tail -8 "$tmp/observe.log" | grep -q "^outside  *[1-9]" || fail "observe: $(tail -8 "$tmp/observe.log")"
-run obsrec record -c 30 -r 333 --cycle 50ms --window 10ms:20ms --observe $sink "$tmp/obs.csv"
+run obsrec record -c 30 -r 333 --cycle 50ms --window 10ms-30ms --observe $sink "$tmp/obs.csv"
 bad=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$9 != 0 || ($10 != "inside" && $10 != "outside") || ($10 == "inside" && ($8 < 10000000 || $8 >= 30000000))')
 [ -z "$bad" ] || fail "observe: $bad"
 n=$(tail -n +2 "$tmp/obs.csv" | awk -F, '$10 == "inside"' | wc -l)

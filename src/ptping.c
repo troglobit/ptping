@@ -38,7 +38,8 @@ static const char *usage_text =
 "\n"
 "Schedule options (CLOCK_TAI):\n"
 "      --cycle TIME              Cycle time of the schedule\n"
-"      --window OFFSET:LENGTH    Send only within this part of the cycle\n"
+"      --window START-END        Send only within this part of the cycle;\n"
+"      --window START+LENGTH     either form\n"
 "      --base-time TIME          Cycles start here (default: 0)\n"
 "      --observe                 Send throughout the cycle anyway, and tag\n"
 "                                each probe by where it left\n"
@@ -124,17 +125,23 @@ static int64_t parse_time(const char *opt, const char *arg, int64_t unit_ns,
 	return val;
 }
 
-/* "OFFSET:LENGTH"; arg is split in place. */
+/* "START-END" or "START+LENGTH"; arg is split in place. */
 static void parse_window(char *arg, struct sched_window *win)
 {
-	char *colon = strchr(arg, ':');
+	char *sep = strpbrk(arg, "-+"), op;
+	int64_t val;
 
-	if (!colon)
-		die("--window: expected OFFSET:LENGTH, got \"%s\"", arg);
+	if (!sep)
+		die("--window: expected START-END or START+LENGTH, got \"%s\"", arg);
 
-	*colon = '\0';
+	op = *sep;
+	*sep = '\0';
 	win->offset_ns = parse_time("--window", arg, 1, 0);
-	win->len_ns = parse_time("--window", colon + 1, 1, 1);
+	val = parse_time("--window", sep + 1, 1, 0);
+
+	win->len_ns = op == '+' ? val : val - win->offset_ns;
+	if (win->len_ns <= 0)
+		die("--window: the window must not be empty");
 }
 
 static uint8_t parse_dscp(const char *arg)
