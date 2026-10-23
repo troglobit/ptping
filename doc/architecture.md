@@ -189,13 +189,14 @@ control connection. The correctionField is kept as the raw signed
 
 ### Port 319 and ptp4l
 
-Both ends bind UDP port 319, because the hardware filters that
-identify PTP on reception key on the destination port. This conflicts
-with a `ptp4l` instance using UDP transport on the same host. The
-sink refuses to start in that case. The source falls back to an
-ephemeral port with a warning, unless `--bidir` is in effect, in which
-case it also refuses. The README advises running `ptp4l` with its L2
-transport, which uses raw sockets and leaves 319 free.
+Both ends receive probes on UDP port 319, because the hardware filters
+that identify PTP on reception key on the destination port. This
+conflicts with a `ptp4l` instance using UDP transport on the same
+host. The sink refuses to start in that case, and so does a source
+with `--bidir`. Forward probes leave from an ephemeral port, so a
+source without `--bidir` does not need 319 at all. The README advises
+running `ptp4l` with its L2 transport, which uses raw sockets and
+leaves 319 free.
 
 
 Control protocol
@@ -289,8 +290,10 @@ Source
 The source is an event loop around `poll()` with these descriptors:
 
 - the control connection,
-- the probe socket (readable for reverse probes and, with `POLLERR`,
-  for transmission timestamps on the error queue),
+- the probe socket, bound to an ephemeral port, readable with
+  `POLLERR` for transmission timestamps on the error queue,
+- with `--bidir`, a socket bound to the probe port, readable for
+  reverse probes,
 - a `timerfd` driving transmission,
 - a `timerfd` for the periodic report.
 

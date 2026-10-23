@@ -45,7 +45,7 @@ struct source {
 	socklen_t sink_len;
 	struct ctrl_conn ctrl;
 	struct ptp_port_id self, sink_id;
-	int probe_fd, report_timer;
+	int tx_fd, rx_fd, report_timer;
 	uint8_t *pkt;
 	size_t pkt_len;
 	uint64_t seq;		/* next forward probe */

@@ -66,11 +66,14 @@ static int probe_len(struct source *src)
 	return size - overhead;
 }
 
-static int probe_open(struct source *src, struct sockaddr_storage *local,
-		      socklen_t llen)
+/* Probes leave from an ephemeral port, so that only a source with
+ * --bidir needs the probe port. The socket sends nothing but probes,
+ * so its transmission counter is the sequence number. */
+static int tx_open(struct source *src, struct sockaddr_storage local,
+		   socklen_t llen)
 {
 	struct opts *opts = src->opts;
-	int fd, len, ret;
+	int fd, len;
 
 	len = probe_len(src);
 	if (len < 0)
@@ -84,37 +87,54 @@ static int probe_open(struct source *src, struct sockaddr_storage *local,
 		return -1;
 	}
 
-	fd = socket(local->ss_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+	fd = socket(local.ss_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 	if (fd < 0) {
 		err_errno("socket");
 		return -1;
 	}
-	src->probe_fd = fd;
+	src->tx_fd = fd;
 
-	addr_set_port(local, opts->port);
-	ret = bind(fd, (struct sockaddr *)local, llen);
-	if (ret && errno == EADDRINUSE) {
-		if (opts->bidir) {
-			err("port %u is in use, and --bidir needs it to receive "
-			    "the reverse probes", opts->port);
-			return -1;
-		}
-		warn("port %u is in use, sending from an ephemeral port", opts->port);
-		addr_set_port(local, 0);
-		ret = bind(fd, (struct sockaddr *)local, llen);
-	}
-	if (ret) {
-		err_errno("bind");
-		return -1;
-	}
-
-	if (sock_set_dscp(fd, local->ss_family, opts->dscp) ||
+	addr_set_port(&local, 0);
+	if (bind(fd, (struct sockaddr *)&local, llen) ||
+	    sock_set_dscp(fd, local.ss_family, opts->dscp) ||
 	    ts_setup_sock(fd, src->mode)) {
 		err_errno("probe socket");
 		return -1;
 	}
 	if (opts->txtime_lead_ns && ts_setup_txtime(fd)) {
 		err_errno("--txtime: SO_TXTIME (needs CAP_NET_ADMIN)");
+		return -1;
+	}
+
+	return 0;
+}
+
+/* Reverse probes arrive on the probe port, where hardware recognizes
+ * them. */
+static int rx_open(struct source *src, struct sockaddr_storage local,
+		   socklen_t llen)
+{
+	struct opts *opts = src->opts;
+	int fd;
+
+	fd = socket(local.ss_family, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+	if (fd < 0) {
+		err_errno("socket");
+		return -1;
+	}
+	src->rx_fd = fd;
+
+	addr_set_port(&local, opts->port);
+	if (bind(fd, (struct sockaddr *)&local, llen)) {
+		if (errno == EADDRINUSE)
+			err("port %u is in use, and --bidir needs it to receive "
+			    "the reverse probes", opts->port);
+		else
+			err_errno("bind");
+		return -1;
+	}
+	if (ts_setup_sock(fd, src->mode)) {
+		err_errno("SO_TIMESTAMPING");
 		return -1;
 	}
 
@@ -178,7 +198,7 @@ static int hello(struct source *src)
 static int session_open(struct source *src)
 {
 	struct opts *opts = src->opts;
-	struct sockaddr_storage local;
+	struct sockaddr_storage local = { 0 };
 	socklen_t llen = sizeof(local);
 	int fd, mode;
 
@@ -212,7 +232,9 @@ static int session_open(struct source *src)
 	src->mode = mode;
 	ptp_port_id_self(&src->self, src->ni.mac, 0);
 
-	if (probe_open(src, &local, llen) || hello(src))
+	if (tx_open(src, local, llen) ||
+	    (opts->bidir && rx_open(src, local, llen)) ||
+	    hello(src))
 		return -1;
 
 	info("%s timestamps on %s", ts_mode_str(src->mode), src->ni.name);
@@ -237,7 +259,7 @@ static void tx_stop(struct source *src)
 static void tx_probe(struct source *src)
 {
 	ptp_sync_set_seq(src->pkt, src->seq);
-	if (ts_sendto(src->probe_fd, src->pkt, src->pkt_len,
+	if (ts_sendto(src->tx_fd, src->pkt, src->pkt_len,
 		      (struct sockaddr *)&src->sink, src->sink_len,
 		      sched_txtime(&src->sched)) < 0 && errno != EAGAIN)
 		dbg("probe %llu: %m", (unsigned long long)src->seq);
@@ -255,7 +277,7 @@ static void tx_timestamps(struct source *src)
 	int64_t now = ts_now(CLOCK_MONOTONIC), ts;
 	uint32_t id;
 
-	while (ts_recv_tx(src->probe_fd, src->mode, &id, &ts) > 0) {
+	while (ts_recv_tx(src->tx_fd, src->mode, &id, &ts) > 0) {
 		src->tx_seq = ts_id_extend(src->tx_seq, id);
 		flow_tx(&src->flow[CTRL_FLOW_FWD].flow, src->tx_seq, ts, now);
 	}
@@ -267,7 +289,7 @@ static void rx_probes(struct source *src)
 	struct ptp_sync sync;
 	struct ts_pair rx;
 
-	while (ptp_recv_sync(src->probe_fd, &sync, &rx) > 0) {
+	while (ptp_recv_sync(src->rx_fd, &sync, &rx) > 0) {
 		if (sync.domain != src->opts->domain ||
 		    ptp_port_id_cmp(&sync.src, &src->sink_id))
 			continue;
@@ -354,7 +376,8 @@ static int loop(struct source *src)
 {
 	struct pollfd pfd[] = {
 		{ .fd = src->ctrl.fd, .events = POLLIN },
-		{ .fd = src->probe_fd, .events = POLLIN },
+		{ .fd = src->tx_fd, .events = POLLERR },
+		{ .fd = src->rx_fd, .events = POLLIN },
 		{ .fd = src->sched.fd, .events = POLLIN },
 		{ .fd = src->report_timer, .events = POLLIN },
 	};
@@ -380,7 +403,7 @@ static int loop(struct source *src)
 		timeout = -1;
 		if (src->stop_at)
 			timeout = (src->stop_at - now) / NS_PER_MS + 1;
-		if (poll(pfd, 4, timeout) < 0)
+		if (poll(pfd, 5, timeout) < 0)
 			continue;
 
 		if (pfd[0].revents && rx_ctrl(src)) {
@@ -389,13 +412,13 @@ static int loop(struct source *src)
 		}
 		if (pfd[1].revents & POLLERR)
 			tx_timestamps(src);
-		if (pfd[1].revents & POLLIN)
+		if (pfd[2].revents)
 			rx_probes(src);
-		if (pfd[2].revents) {
+		if (pfd[3].revents) {
 			timer_ack(src->sched.fd);
 			tx_probe(src);
 		}
-		if (pfd[3].revents) {
+		if (pfd[4].revents) {
 			timer_ack(src->report_timer);
 			report(src, 0);
 		}
@@ -416,7 +439,8 @@ int source_run(struct source *src, struct opts *opts,
 		.opts = opts,
 		.ops = ops,
 		.priv = priv,
-		.probe_fd = -1,
+		.tx_fd = -1,
+		.rx_fd = -1,
 		.report_timer = -1,
 		.sched = { .fd = -1, .qos_fd = -1 },
 		.ctrl.fd = -1,
@@ -443,7 +467,8 @@ out:
 		flow_fini(&src->flow[i].flow);
 	free(src->pkt);
 	sched_fini(&src->sched);
-	close(src->probe_fd);
+	close(src->tx_fd);
+	close(src->rx_fd);
 	close(src->report_timer);
 	close(src->ctrl.fd);
 	return ret;
