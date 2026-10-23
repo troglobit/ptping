@@ -17,7 +17,7 @@
 #include "ts.h"
 #include "tspec.h"
 
-#define MAX_SESSIONS 32
+#define MAX_SESSIONS PTP_SELF_PORTS
 #define BATCH_DELAY_NS (50 * NS_PER_MS)
 #define HELLO_TIMEOUT_NS (5 * NS_PER_S)
 
@@ -236,7 +236,7 @@ static int session_start(struct sink *sink, struct session *s,
 	s->mode = hello->tstamp;
 	s->src = hello->src;
 	s->domain = hello->domain;
-	ptp_port_id_self(&s->self, ni.mac);
+	ptp_port_id_self(&s->self, ni.mac, s - sink->sessions);
 
 	if ((hello->flags & CTRL_HELLO_BIDIR) &&
 	    rev_open(sink, s, hello, &local, llen, reason))

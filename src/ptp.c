@@ -105,9 +105,12 @@ void ptp_port_id_get(const uint8_t *buf, struct ptp_port_id *pid)
 	pid->port = get16(buf + 8);
 }
 
-void ptp_port_id_self(struct ptp_port_id *pid, const uint8_t mac[6])
+void ptp_port_id_self(struct ptp_port_id *pid, const uint8_t mac[6], unsigned n)
 {
-	ptp_port_id_from_mac(pid, mac, getpid() % 65535 + 1);
+	/* Processes whose pids are less than 2047 apart never share a
+	 * port number. */
+	ptp_port_id_from_mac(pid, mac,
+			     ((uint64_t)getpid() * PTP_SELF_PORTS + n) % 65535 + 1);
 }
 
 int ptp_port_id_cmp(const struct ptp_port_id *a, const struct ptp_port_id *b)

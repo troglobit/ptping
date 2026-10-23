@@ -45,10 +45,14 @@ uint64_t ptp_seq_extend(uint64_t last, uint16_t seq);
 void ptp_port_id_from_mac(struct ptp_port_id *pid, const uint8_t mac[6],
 			  uint16_t port);
 
-/* This process's identity on an interface: the EUI-64 of its MAC
- * address, and a port number from the pid so that several processes
- * on one host can be told apart. */
-void ptp_port_id_self(struct ptp_port_id *pid, const uint8_t mac[6]);
+/* The number of identities a process can have on one interface. */
+#define PTP_SELF_PORTS 32
+
+/* Identity n, below PTP_SELF_PORTS, of this process on an interface:
+ * the EUI-64 of its MAC address, and a port number from the pid and n,
+ * so that the sessions of one process, and of several processes on
+ * one host, can be told apart. */
+void ptp_port_id_self(struct ptp_port_id *pid, const uint8_t mac[6], unsigned n);
 
 int ptp_port_id_cmp(const struct ptp_port_id *a, const struct ptp_port_id *b);
 

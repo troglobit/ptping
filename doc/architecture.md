@@ -80,10 +80,14 @@ originTimestamp, and the sink ignores it.
 
 The clockIdentity is the EUI-64 derived from the MAC address of the
 interface the probes leave through, exactly as `ptp4l` does. The
-portNumber is `(getpid() % 65535) + 1`, so that several `ptping`
-processes on one host are distinguishable on the sink. The pair is
-sent to the sink in the HELLO message, and the sink uses it to map
-received probes to sessions.
+portNumber is `(getpid() * 32 + n) % 65535 + 1`, where n is the
+session's slot on the sink and 0 on the source, so that the sessions
+of one sink, and several `ptping` processes on one host, are
+distinguishable. Processes whose pids are less than 2047 apart never
+collide. This caps a sink at 32 sessions. The source sends its
+identity in HELLO, and the sink uses it to map received probes to
+sessions. The sink sends its own in WELCOME, and the source uses it
+to map reverse probes to sessions.
 
 ### Padding
 

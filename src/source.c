@@ -210,7 +210,7 @@ static int session_open(struct source *src)
 		return -1;
 	}
 	src->mode = mode;
-	ptp_port_id_self(&src->self, src->ni.mac);
+	ptp_port_id_self(&src->self, src->ni.mac, 0);
 
 	if (probe_open(src, &local, llen) || hello(src))
 		return -1;
