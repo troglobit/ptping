@@ -127,7 +127,27 @@ for the reverse flow.
 
 To save every sample for later analysis, use `record` instead:
 
-    user@start:~# ptping record fe80::dead:1%eth0 run1.csv
+    user@start:~# ptping record -o run1.csv fe80::dead:1%eth0
+
+### Comparing streams
+
+One source can run several streams at once, one per sink address on
+the command line. Each address gets the options given before it, so
+to compare how three classes cross the same gate, change only the
+DSCP between them:
+
+    user@start:~# ptping stat --cycle 1ms --window 200us+100us \
+                    -n voice -d cs7 fe80::dead:1%eth0 \
+                    -n video -d cs5 fe80::dead:1%eth0 \
+                    -n bulk  -d 0   fe80::dead:1%eth0
+
+To compare two paths through the network, name a sink address on
+each:
+
+    user@start:~# ptping stat 10.0.1.2 10.0.2.2
+
+`stat` gives every stream its own lines, and `record` names the
+stream in the first column.
 
 
 Usage
@@ -136,19 +156,15 @@ Usage
 ```
 ptping [<common-options>] <command> [<command-options-and-arguments>]
 
-ptping sink   [<sink-options>] [<BIND-ADDRESS>]
-ptping probe  [<source-options>] <SINK-ADDRESS>
-ptping stat   [<source-options>] <SINK-ADDRESS>
-ptping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
-ptping [<source-options>] <SINK-ADDRESS>
+ptping sink   [<BIND-ADDRESS>]
+ptping probe  <STREAM>...
+ptping stat   <STREAM>...
+ptping record [-o <OUTPUT-FILE>] <STREAM>...
+ptping <STREAM>...
+
+<STREAM> is [<source-options>] <SINK-ADDRESS>
 
 Common options:
-  -D, --domain N
-      Operate in PTP domain N. The user must ensure that the domain is
-      not used for time synchronization.
-
-      By default, operate in domain 254.
-
   -p, --port N
       Use port N for probes and for the control connection. Hardware
       only recognizes PTP on port 319, so this is for testing with
@@ -156,8 +172,18 @@ Common options:
 
       By default, port 319 is used.
 
+  -i, --interval <time>
+      Print a `stat` report every <time>.
+
+      By default, one is printed every second.
+
+  -o, --output <OUTPUT-FILE>
+      Make `record` write to <OUTPUT-FILE>.
+
+      By default, it writes to stdout.
+
 Commands:
-  sink [<sink-options>] [<BIND-ADDRESS>]
+  sink [<BIND-ADDRESS>]
       Listen for connections from sources on <BIND-ADDRESS>, if
       specified, otherwise on any address. Record timestamps of
       incoming probe packets and relay the results back to the source.
@@ -165,31 +191,56 @@ Commands:
       A sink serves multiple sources concurrently. Probes are matched
       to sources by their sourcePortIdentity and sequenceId.
 
-  probe [<source-options>] <SINK-ADDRESS>
+  probe <STREAM>...
       Verify that the sink accepts connections. Send a single probe
       packet, make sure that the transmission timestamp can be
       retrieved, and that the sink relays back the reception
       timestamp. Warn if the latency suggests that the probe was
       forwarded in software somewhere along the path.
 
-  stat [<source-options>] <SINK-ADDRESS>
+  stat <STREAM>...
       Continuously send probe packets to the sink and track key
       statistics about packets transmitted, received and lost,
       min, average, p99, p99.9 and max latencies, etc.
 
-  record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]
+  record [-o <OUTPUT-FILE>] <STREAM>...
       Record latency measurements and write the results to
       <OUTPUT-FILE> if specified, otherwise to stdout. Output is CSV
-      with one line per probe, containing the direction, sequence
-      number, transmission timestamp, reception timestamp,
+      with one line per probe, containing the stream, direction,
+      sequence number, transmission timestamp, reception timestamp,
       correctionField and latency. Lost probes are detected from gaps
       in the sequence numbers and recorded with empty reception
       fields.
 
-  <SINK-ADDRESS>
-      Shorthand for `stat <SINK-ADDRESS>`.
+  <STREAM>...
+      Shorthand for `stat <STREAM>...`.
+
+Streams:
+  Each <SINK-ADDRESS> is a stream of probes to that sink, sent with
+  the source options given before it, on the command line or before
+  the command. An option stays in effect for every later address
+  until it is given again, so streams that differ in one parameter
+  only need that option repeated. --name is the exception: it only
+  applies to the next address.
+
+  The streams run at the same time, each with a session of its own,
+  so they may go to different sinks or to the same one. When a
+  stream's sink goes away, that stream ends and the rest carry on.
 
 Source options:
+  -n, --name <name>
+      Name the stream in the output of every command.
+
+      By default, a stream is named after its <SINK-ADDRESS>, with
+      #2, #3 and so on added when an earlier stream has that name.
+      `record` refuses a name with a comma in it, which would split
+      its CSV field.
+
+  -D, --domain N
+      Operate in PTP domain N. The user must ensure that the domain is
+      not used for time synchronization.
+
+      By default, operate in domain 254.
 
   -T, --timestamping hw|sw|any
       hw:  Require hardware timestamping support.
@@ -206,9 +257,10 @@ Source options:
       By default, hardware timestamping support is required.
 
   -b, --bidir
-      Also measure the latency from the sink to the source. Reported
-      as a separate flow in `stat` and `record`. See "Clock
-      synchronization" above for why this is useful.
+  --no-bidir
+      Also measure the latency from the sink to the source, or stop
+      doing so. Reported as a separate flow in `stat` and `record`.
+      See "Clock synchronization" above for why this is useful.
 
   -c, --count <n>
       Exit after sending <n> packets.
@@ -222,11 +274,6 @@ Source options:
       select the egress queue under test.
 
       By default, CS5 is used.
-
-  -i, --interval <time>
-      Print a `stat` report every <time>.
-
-      By default, one is printed every second.
 
   -r, --rate <rate>|<time>
       Send <rate> packets per second, or one packet every <time>. A
@@ -254,7 +301,7 @@ Source options:
 
   Every <time> takes an optional unit, ns, us, ms or s, and decimals,
   as in 1.5ms. Without a unit, the schedule options below are in
-  nanoseconds and the two above in seconds.
+  nanoseconds, and --interval and --timeout are in seconds.
 
 Schedule options:
 
@@ -286,10 +333,13 @@ Schedule options:
       since the epoch.
 
   --observe
+  --no-observe
       Keep sending throughout the cycle as if there were no window,
       and instead tag every probe by whether it left the source inside
       the window or outside it. `stat` reports the two separately,
       `record` writes the tag per sample.
+
+      --no-observe goes back to sending only within the window.
 
       This shows what the network does to the class at every phase of
       the cycle, and does not depend on the source placing its

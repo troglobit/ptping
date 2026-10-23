@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "log.h"
+#include "ptp.h"
 #include "ptping.h"
 #include "tspec.h"
 
@@ -15,24 +16,31 @@ static const char *usage_text =
 "usage: ptping [<common-options>] <command> [<command-options-and-arguments>]\n"
 "\n"
 "  ptping sink   [<BIND-ADDRESS>]\n"
-"  ptping probe  [<source-options>] <SINK-ADDRESS>\n"
-"  ptping stat   [<source-options>] <SINK-ADDRESS>\n"
-"  ptping record [<source-options>] <SINK-ADDRESS> [<OUTPUT-FILE>]\n"
-"  ptping [<source-options>] <SINK-ADDRESS>\n"
+"  ptping probe  <STREAM>...\n"
+"  ptping stat   <STREAM>...\n"
+"  ptping record [-o <FILE>] <STREAM>...\n"
+"  ptping <STREAM>...\n"
+"\n"
+"A <STREAM> is [<source-options>] <SINK-ADDRESS>. Probes go to each\n"
+"SINK-ADDRESS with all source options given before it, except --name,\n"
+"which only names the next one.\n"
 "\n"
 "Common options:\n"
-"  -D, --domain N                PTP domain (default: 254)\n"
 "  -p, --port N                  Probe and control port (default: 319)\n"
+"  -i, --interval TIME           Time between stat reports (default: 1s)\n"
+"  -o, --output FILE             Where record writes (default: stdout)\n"
 "  -v, --verbose                 More output, repeat for even more\n"
 "  -h, --help                    This text\n"
 "  -V, --version                 Print version and exit\n"
 "\n"
 "Source options:\n"
+"  -n, --name NAME               Name of the stream (default: SINK-ADDRESS)\n"
+"  -D, --domain N                PTP domain (default: 254)\n"
 "  -T, --timestamping hw|sw|any  Timestamping requirement (default: hw)\n"
 "  -b, --bidir                   Also measure sink to source\n"
+"      --no-bidir                Do not, again\n"
 "  -c, --count N                 Stop after N probes\n"
 "  -d, --dscp VAL|csN            DSCP of probes (default: cs5)\n"
-"  -i, --interval TIME           Time between reports (default: 1s)\n"
 "  -r, --rate RATE|TIME          Probes per second, or the time between\n"
 "                                them: 100, 4.7hz, 10ms (default: 100hz)\n"
 "  -s, --size BYTES              Frame size on the wire (default: minimum)\n"
@@ -45,6 +53,7 @@ static const char *usage_text =
 "      --base-time TIME          Cycles start here (default: 0)\n"
 "      --observe                 Send throughout the cycle anyway, and tag\n"
 "                                each probe by where it left\n"
+"      --no-observe              Send only within the window again\n"
 "      --txtime TIME             Set launch times for the etf qdisc, handing\n"
 "                                probes to the kernel this much early\n"
 "\n"
@@ -182,124 +191,22 @@ enum {
 	OPT_WINDOW,
 	OPT_BASE_TIME,
 	OPT_OBSERVE,
+	OPT_NO_OBSERVE,
+	OPT_NO_BIDIR,
 	OPT_TXTIME,
 };
-
-static void opts_parse(struct opts *opts, int argc, char **argv)
-{
-	static const struct option longopts[] = {
-		{ "timestamping", required_argument, NULL, 'T' },
-		{ "domain",       required_argument, NULL, 'D' },
-		{ "port",         required_argument, NULL, 'p' },
-		{ "verbose",      no_argument,       NULL, 'v' },
-		{ "help",         no_argument,       NULL, 'h' },
-		{ "version",      no_argument,       NULL, 'V' },
-
-		{ "bidir",        no_argument,       NULL, 'b' },
-		{ "count",        required_argument, NULL, 'c' },
-		{ "dscp",         required_argument, NULL, 'd' },
-		{ "interval",     required_argument, NULL, 'i' },
-		{ "rate",         required_argument, NULL, 'r' },
-		{ "size",         required_argument, NULL, 's' },
-		{ "timeout",      required_argument, NULL, 'W' },
-		{ "cycle",        required_argument, NULL, OPT_CYCLE },
-		{ "window",       required_argument, NULL, OPT_WINDOW },
-		{ "base-time",    required_argument, NULL, OPT_BASE_TIME },
-		{ "observe",      no_argument,       NULL, OPT_OBSERVE },
-		{ "txtime",       required_argument, NULL, OPT_TXTIME },
-		{ NULL }
-	};
-	int c;
-
-	while ((c = getopt_long(argc, argv, "T:D:p:vhVbc:d:i:r:s:W:",
-				longopts, NULL)) != -1) {
-		switch (c) {
-		case 'T':
-			c = ts_mode_parse(optarg);
-			if (c < 0)
-				die("--timestamping: expected hw, sw or any, got \"%s\"", optarg);
-			opts->ts_mode = c;
-			break;
-		case 'D':
-			opts->domain = parse_ulong("--domain", optarg, 0, 255);
-			break;
-		case 'p':
-			opts->port = parse_ulong("--port", optarg, 1, 65535);
-			break;
-		case 'v':
-			log_level++;
-			break;
-		case 'h':
-			usage(0);
-			break;
-		case 'V':
-			puts(PACKAGE_STRING);
-			exit(0);
-
-		case 'b':
-			opts->bidir = true;
-			break;
-		case 'c':
-			opts->count = parse_ulong("--count", optarg, 1, UINT32_MAX);
-			break;
-		case 'd':
-			opts->dscp = parse_dscp(optarg);
-			break;
-		case 'i':
-			opts->report_ns = parse_time("--interval", optarg, NS_PER_S, 1);
-			break;
-		case 'r':
-			opts->period_ns = parse_period(optarg);
-			break;
-		case 's':
-			opts->size = parse_ulong("--size", optarg, 1, 9000);
-			break;
-		case 'W':
-			opts->timeout_ns = parse_time("--timeout", optarg, NS_PER_S, 1);
-			break;
-		case OPT_CYCLE:
-			opts->win.cycle_ns = parse_time("--cycle", optarg, 1, 1);
-			break;
-		case OPT_WINDOW:
-			parse_window(optarg, &opts->win);
-			break;
-		case OPT_BASE_TIME:
-			opts->win.base = parse_time("--base-time", optarg, 1, 0);
-			break;
-		case OPT_OBSERVE:
-			opts->win.observe = 1;
-			break;
-		case OPT_TXTIME:
-			opts->txtime_lead_ns = parse_time("--txtime", optarg, 1, 1);
-			break;
-
-		default:
-			usage(1);
-		}
-	}
-
-	if (opts->win.cycle_ns && opts->win.offset_ns + opts->win.len_ns > opts->win.cycle_ns)
-		die("--window must fit in the cycle");
-	if (!opts->win.cycle_ns && (opts->win.len_ns || opts->win.base || opts->win.observe))
-		die("--window, --base-time and --observe need --cycle");
-	if (opts->win.cycle_ns && !opts->win.len_ns)
-		die("--cycle needs --window");
-
-	opts->argc = argc - optind;
-	opts->argv = argv + optind;
-}
 
 struct cmd {
 	const char *name;
 	int (*fn)(struct opts *);
-	int min_args, max_args;
+	bool streams;		/* takes SINK-ADDRESSes, else a BIND-ADDRESS */
 };
 
 static const struct cmd cmds[] = {
-	{ "sink",   cmd_sink,   0, 1 },
-	{ "probe",  cmd_probe,  1, 1 },
-	{ "stat",   cmd_stat,   1, 1 },
-	{ "record", cmd_record, 1, 2 },
+	{ "sink",   cmd_sink,   false },
+	{ "probe",  cmd_probe,  true },
+	{ "stat",   cmd_stat,   true },
+	{ "record", cmd_record, true },
 	{ NULL }
 };
 
@@ -315,34 +222,248 @@ static const struct cmd *cmd_find(const char *name)
 	return NULL;
 }
 
+static int name_taken(const struct opts *opts, const char *name)
+{
+	unsigned i;
+
+	for (i = 0; i < opts->nstreams; i++) {
+		if (!strcmp(opts->streams[i].name, name))
+			return 1;
+	}
+
+	return 0;
+}
+
+/* The sink's address, or if a stream already has that name, the
+ * address with the first free "#2", "#3"... */
+static const char *stream_name(const struct opts *opts, const char *sink)
+{
+	unsigned n;
+	char *name;
+
+	if (!name_taken(opts, sink))
+		return sink;
+
+	for (n = 2;; n++) {
+		if (asprintf(&name, "%s#%u", sink, n) < 0)
+			die_errno("asprintf");
+		if (!name_taken(opts, name))
+			return name;
+		free(name);
+	}
+}
+
+/* A stream to sink, with the options given so far. */
+static void stream_add(struct opts *opts, struct stream_opts *cur, const char *sink)
+{
+	struct stream_opts *st;
+
+	if (cur->win.cycle_ns && cur->win.offset_ns + cur->win.len_ns > cur->win.cycle_ns)
+		die("--window must fit in the cycle");
+	if (!cur->win.cycle_ns && (cur->win.len_ns || cur->win.base || cur->win.observe))
+		die("--window, --base-time and --observe need --cycle");
+	if (cur->win.cycle_ns && !cur->win.len_ns)
+		die("--cycle needs --window");
+	if (opts->nstreams == PTP_SELF_PORTS)
+		die("at most %d streams", PTP_SELF_PORTS);
+
+	opts->streams = realloc(opts->streams, (opts->nstreams + 1) * sizeof(*st));
+	if (!opts->streams)
+		die_errno("realloc");
+
+	if (cur->name && name_taken(opts, cur->name))
+		die("two streams are named \"%s\"; tell them apart with --name",
+		    cur->name);
+
+	st = &opts->streams[opts->nstreams];
+	*st = *cur;
+	st->sink = sink;
+	if (!st->name)
+		st->name = stream_name(opts, sink);
+	cur->name = NULL;
+	opts->nstreams++;
+}
+
+/* An option for the next SINK-ADDRESS. Returns -1 if c is not one. */
+static int stream_opt(struct stream_opts *cur, int c, char *arg)
+{
+	switch (c) {
+	case 'n':
+		cur->name = arg;
+		break;
+	case 'D':
+		cur->domain = parse_ulong("--domain", arg, 0, 255);
+		break;
+	case 'T':
+		c = ts_mode_parse(arg);
+		if (c < 0)
+			die("--timestamping: expected hw, sw or any, got \"%s\"", arg);
+		cur->ts_mode = c;
+		break;
+	case 'b':
+		cur->bidir = true;
+		break;
+	case OPT_NO_BIDIR:
+		cur->bidir = false;
+		break;
+	case 'c':
+		cur->count = parse_ulong("--count", arg, 1, UINT32_MAX);
+		break;
+	case 'd':
+		cur->dscp = parse_dscp(arg);
+		break;
+	case 'r':
+		cur->period_ns = parse_period(arg);
+		break;
+	case 's':
+		cur->size = parse_ulong("--size", arg, 1, 9000);
+		break;
+	case 'W':
+		cur->timeout_ns = parse_time("--timeout", arg, NS_PER_S, 1);
+		break;
+	case OPT_CYCLE:
+		cur->win.cycle_ns = parse_time("--cycle", arg, 1, 1);
+		break;
+	case OPT_WINDOW:
+		parse_window(arg, &cur->win);
+		break;
+	case OPT_BASE_TIME:
+		cur->win.base = parse_time("--base-time", arg, 1, 0);
+		break;
+	case OPT_OBSERVE:
+		cur->win.observe = 1;
+		break;
+	case OPT_NO_OBSERVE:
+		cur->win.observe = 0;
+		break;
+	case OPT_TXTIME:
+		cur->txtime_lead_ns = parse_time("--txtime", arg, 1, 1);
+		break;
+	default:
+		return -1;
+	}
+
+	return 0;
+}
+
+/* A command, or for the sink its bind address, or else a stream. */
+static void positional(struct opts *opts, struct stream_opts *cur,
+		       const struct cmd **cmd, const char *arg)
+{
+	if (!*cmd) {
+		*cmd = cmd_find(arg);
+		if (*cmd)
+			return;
+
+		/* "ptping [<source-options>] <SINK-ADDRESS>" */
+		*cmd = cmd_find("stat");
+	}
+
+	if ((*cmd)->streams) {
+		stream_add(opts, cur, arg);
+		return;
+	}
+
+	if (opts->bind)
+		usage(1);
+	opts->bind = arg;
+}
+
+/* Options are taken in order, since each SINK-ADDRESS gets the source
+ * options that come before it. Returns the command. */
+static const struct cmd *opts_parse(struct opts *opts, int argc, char **argv)
+{
+	static const struct option longopts[] = {
+		{ "port",         required_argument, NULL, 'p' },
+		{ "interval",     required_argument, NULL, 'i' },
+		{ "output",       required_argument, NULL, 'o' },
+		{ "verbose",      no_argument,       NULL, 'v' },
+		{ "help",         no_argument,       NULL, 'h' },
+		{ "version",      no_argument,       NULL, 'V' },
+
+		{ "name",         required_argument, NULL, 'n' },
+		{ "domain",       required_argument, NULL, 'D' },
+		{ "timestamping", required_argument, NULL, 'T' },
+		{ "bidir",        no_argument,       NULL, 'b' },
+		{ "no-bidir",     no_argument,       NULL, OPT_NO_BIDIR },
+		{ "count",        required_argument, NULL, 'c' },
+		{ "dscp",         required_argument, NULL, 'd' },
+		{ "rate",         required_argument, NULL, 'r' },
+		{ "size",         required_argument, NULL, 's' },
+		{ "timeout",      required_argument, NULL, 'W' },
+		{ "cycle",        required_argument, NULL, OPT_CYCLE },
+		{ "window",       required_argument, NULL, OPT_WINDOW },
+		{ "base-time",    required_argument, NULL, OPT_BASE_TIME },
+		{ "observe",      no_argument,       NULL, OPT_OBSERVE },
+		{ "no-observe",   no_argument,       NULL, OPT_NO_OBSERVE },
+		{ "txtime",       required_argument, NULL, OPT_TXTIME },
+		{ NULL }
+	};
+	struct stream_opts cur = {
+		.ts_mode = TS_MODE_HW,
+		.domain = 254,
+		.dscp = 40, /* CS5 */
+		.period_ns = NS_PER_S / 100,
+		.timeout_ns = NS_PER_S,
+	};
+	const struct cmd *cmd = NULL;
+	int c, unused = 0;
+
+	while ((c = getopt_long(argc, argv, "-p:i:o:vhVn:D:T:bc:d:r:s:W:",
+				longopts, NULL)) != -1) {
+		switch (c) {
+		case 1:
+			positional(opts, &cur, &cmd, optarg);
+			unused = 0;
+			break;
+
+		case 'p':
+			opts->port = parse_ulong("--port", optarg, 1, 65535);
+			break;
+		case 'i':
+			opts->report_ns = parse_time("--interval", optarg, NS_PER_S, 1);
+			break;
+		case 'o':
+			opts->output = optarg;
+			break;
+		case 'v':
+			log_level++;
+			break;
+		case 'h':
+			usage(0);
+			break;
+		case 'V':
+			puts(PACKAGE_STRING);
+			exit(0);
+
+		default:
+			if (stream_opt(&cur, c, optarg))
+				usage(1);
+			unused = 1;
+		}
+	}
+
+	/* After "--" */
+	for (; optind < argc; optind++)
+		positional(opts, &cur, &cmd, argv[optind]);
+
+	if (!cmd || (cmd->streams && !opts->nstreams))
+		usage(1);
+	if (unused && cmd->streams)
+		die("source options apply to the SINK-ADDRESS after them, and "
+		    "there is none after the last ones");
+
+	return cmd;
+}
+
 int main(int argc, char **argv)
 {
 	struct opts opts = {
-		.ts_mode = TS_MODE_HW,
-		.domain = 254,
 		.port = PTPING_PORT,
-		.dscp = 40, /* CS5 */
-		.period_ns = NS_PER_S / 100,
 		.report_ns = NS_PER_S,
-		.timeout_ns = NS_PER_S,
 	};
 	const struct cmd *cmd;
 
-	opts_parse(&opts, argc, argv);
-	if (!opts.argc)
-		usage(1);
-
-	cmd = cmd_find(opts.argv[0]);
-	if (cmd) {
-		opts.argc--;
-		opts.argv++;
-	} else {
-		/* "ptping [<source-options>] <SINK-ADDRESS>" */
-		cmd = cmd_find("stat");
-	}
-
-	if (opts.argc < cmd->min_args || opts.argc > cmd->max_args)
-		usage(1);
-
+	cmd = opts_parse(&opts, argc, argv);
 	return cmd->fn(&opts);
 }

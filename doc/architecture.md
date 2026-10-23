@@ -19,7 +19,9 @@ two programs in disguise:
 - `probe`, `stat` and `record` all run the _source_: the client that
   sends probes, collects timestamps from both ends, pairs them up into
   samples, and hands each sample to a command-specific consumer. The
-  three commands differ only in what they do with the samples.
+  three commands differ only in what they do with the samples. A
+  source runs one or more streams at once, each to a sink of its own
+  or several to the same one.
 
 ```
   source host                                   sink host
@@ -48,6 +50,9 @@ Terminology
   timestamps have arrived, or when the loss timeout expires.
 - _Session_: one source talking to one sink, i.e. one control
   connection and the flows that belong to it.
+- _Stream_: the source's end of a session, with the options it was
+  given on the command line. A source runs one stream per sink
+  address.
 
 
 Probe packets
@@ -81,13 +86,13 @@ originTimestamp, and the sink ignores it.
 The clockIdentity is the EUI-64 derived from the MAC address of the
 interface the probes leave through, exactly as `ptp4l` does. The
 portNumber is `(getpid() * 32 + n) % 65535 + 1`, where n is the
-session's slot on the sink and 0 on the source, so that the sessions
-of one sink, and several `ptping` processes on one host, are
-distinguishable. Processes whose pids are less than 2047 apart never
-collide. This caps a sink at 32 sessions. The source sends its
-identity in HELLO, and the sink uses it to map received probes to
-sessions. The sink sends its own in WELCOME, and the source uses it
-to map reverse probes to sessions.
+stream's index on the source and the session's slot on the sink, so
+that the sessions of one process, and of several `ptping` processes
+on one host, are distinguishable. Processes whose pids are less than
+2047 apart never collide. This caps a source at 32 streams and a sink
+at 32 sessions. The source sends its identity in HELLO, and the sink
+uses it to map received probes to sessions. The sink sends its own
+in WELCOME, and the source uses it to map reverse probes to streams.
 
 ### Padding
 
@@ -287,20 +292,34 @@ noticed within a few seconds.
 Source
 ------
 
-The source is an event loop around `poll()` with these descriptors:
+The source is an event loop around `poll()`, shared by all streams,
+with these descriptors:
 
-- the control connection,
-- the probe socket, bound to an ephemeral port, readable with
-  `POLLERR` for transmission timestamps on the error queue,
-- with `--bidir`, a socket bound to the probe port, readable for
-  reverse probes,
-- a `timerfd` driving transmission,
-- a `timerfd` for the periodic report.
+- a `timerfd` for the periodic report,
+- per local address that a `--bidir` stream uses, a UDP socket bound
+  to the probe port on that address, which receives the reverse
+  probes of all those streams. Like the sink's, it asks for both
+  hardware and software timestamps, and a probe's stream, found by
+  the sink identity it carries, picks the one it uses.
+- per stream:
+  - the control connection,
+  - a UDP socket of its own, bound to an ephemeral port, for its
+    forward probes and, with `POLLERR`, their transmission
+    timestamps. It sends nothing else, so the kernel's send counter
+    is the stream's sequence number.
+  - a `timerfd` driving transmission.
 
 SIGINT and SIGTERM set a counter that the loop checks on every
-wake-up: the first stops sending and starts the drain, the second
-ends the run at once. The loss timeout sweep also runs on every
-wake-up, since it only ever looks at the oldest sample of each flow.
+wake-up: the first stops sending on every stream and starts the
+drains, the second ends the run at once. Each stream drains on its
+own, and the run ends when all of them have. A stream whose control
+connection fails ends on its own, and the others carry on; the exit
+status then says that one was lost. The loss timeout sweep also runs
+on every wake-up, since it only ever looks at the oldest sample of
+each flow.
+
+Streams are set up one after the other before any probe is sent, and
+if any of them fails, the run ends before it starts.
 
 ### Flows
 
@@ -370,22 +389,26 @@ The reverse flow follows the same schedule, which HELLO carries.
 
 ### Consumers
 
-- `probe` sends one probe, with `--count 1` forced, waits for it to
-  resolve, and prints a verdict: timestamp sources at each end,
-  latency, correctionField (nonzero means transparent clocks in the
-  path, and the residence time is printed), and a warning when the
-  latency exceeds 1 ms, which on a switched network means something
-  forwarded the probe in software. Exit status is non-zero when the
-  probe was lost or either timestamp is missing.
+- `probe` sends one probe per stream, with `--count 1` forced, waits
+  for them to resolve, and prints a verdict per stream: timestamp
+  sources at each end, latency, correctionField (nonzero means
+  transparent clocks in the path, and the residence time is printed),
+  and a warning when the latency exceeds 1 ms, which on a switched
+  network means something forwarded the probe in software. Exit
+  status is non-zero when a probe was lost or either of its
+  timestamps is missing.
 
-- `stat` feeds samples into `stats.c` and prints a report every
-  interval (`-i`, default 1 s). On a terminal the report overwrites
-  itself in place; otherwise one report is printed per interval. The
-  final report on exit covers the whole run.
+- `stat` feeds samples into `stats.c`, a set per stream, and prints
+  a report every interval (`-i`, default 1 s). On a terminal the
+  report overwrites itself in place, going back up over every row
+  the previous one took, including those its long lines wrapped
+  onto; otherwise one report is printed per interval. The final
+  report on exit covers the whole run.
 
 - `record` writes one CSV line per sample, in sequence order within
-  each flow, with the header
-  `flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns,rx_phase_ns,cycles,tag`.
+  each flow of each stream, with the lines of different streams
+  interleaved as they resolve, under the header
+  `stream,flow,seq,tx_ns,rx_ns,correction,latency_ns,tx_phase_ns,rx_phase_ns,cycles,tag`.
   Missing fields are empty, and the last four are only there with a
   schedule. Lines are flushed every report interval.
 
@@ -452,8 +475,8 @@ Code layout
     src/
       ptping.c    main(): common options, command dispatch
       sink.c      sink command
-      source.c    source event loop, session setup, shared by the three
-                  source commands
+      source.c    source event loop and stream setup, shared by the
+                  three source commands
       probe.c     probe consumer and verdict
       stat.c      stat consumer and report formatting
       record.c    record consumer, CSV output

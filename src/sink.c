@@ -457,7 +457,7 @@ int cmd_sink(struct opts *opts)
 	sigaction(SIGINT, &sa, NULL);
 	sigaction(SIGTERM, &sa, NULL);
 
-	if (sink_listen(&sink, opts->argc ? opts->argv[0] : NULL))
+	if (sink_listen(&sink, opts->bind))
 		return 1;
 
 	sink_loop(&sink);
