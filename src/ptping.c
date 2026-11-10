@@ -207,7 +207,7 @@ static const struct cmd cmds[] = {
 	{ "probe",  cmd_probe,  true },
 	{ "stat",   cmd_stat,   true },
 	{ "record", cmd_record, true },
-	{ NULL }
+	{ NULL, NULL, false }
 };
 
 static const struct cmd *cmd_find(const char *name)
@@ -397,7 +397,7 @@ static const struct cmd *opts_parse(struct opts *opts, int argc, char **argv)
 		{ "observe",      no_argument,       NULL, OPT_OBSERVE },
 		{ "no-observe",   no_argument,       NULL, OPT_NO_OBSERVE },
 		{ "txtime",       required_argument, NULL, OPT_TXTIME },
-		{ NULL }
+		{ NULL, 0, NULL, 0 }
 	};
 	struct stream_opts cur = {
 		.ts_mode = TS_MODE_HW,

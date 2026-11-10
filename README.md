@@ -397,3 +397,10 @@ If you are building from a GIT tree and not a release tarball, you must
 first generate the `configure` script:
 
     ./autogen.sh
+
+
+License
+-------
+
+`ptping` is free software, licensed under the GNU General Public
+License, version 2.  See the file `COPYING` for the full text.
