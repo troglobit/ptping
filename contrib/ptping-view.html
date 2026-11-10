@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ptping view</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.3/plotly.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #6250d6;
+  --series-8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column;
+  background: var(--page); color: var(--ink);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 16px; font-weight: 600; margin: 0 8px 0 0; }
+nav { display: flex; gap: 2px; }
+nav button, .ctl button {
+  font: inherit; color: var(--ink-2); background: none;
+  border: 1px solid transparent; border-radius: 4px; padding: 4px 10px; cursor: pointer;
+}
+nav button:hover, .ctl button:hover { background: var(--surface); border-color: var(--border); }
+nav button[aria-current="true"] { color: var(--ink); background: var(--surface); border-color: var(--axis); }
+.ctl { display: flex; gap: 6px; align-items: center; color: var(--ink-2); }
+.ctl select {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--axis); border-radius: 4px; padding: 3px 6px;
+}
+#status { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 16px 8px; }
+#plot { flex: 1; min-height: 320px; }
+#caption { color: var(--ink-2); padding: 4px 0 0; min-height: 1.4em; }
+#summary { overflow: auto; padding-top: 12px; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
+th, td { padding: 4px 10px; text-align: right; border-bottom: 1px solid var(--grid); }
+th { color: var(--ink-2); font-weight: 500; }
+td:first-child, th:first-child, td.l, th.l { text-align: left; }
+td.sw { padding-right: 0; }
+.sw i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; }
+#error { color: var(--ink-2); padding: 24px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ptping</h1>
+  <span class="ctl" id="filectl"><select id="file"></select></span>
+  <nav id="views"></nav>
+  <span class="ctl">flow
+    <select id="flow">
+      <option value="">both</option><option value="fwd">fwd</option><option value="rev">rev</option>
+    </select>
+  </span>
+  <span class="ctl" id="tagctl">tag
+    <select id="tag">
+      <option value="">all</option><option value="inside">inside</option><option value="outside">outside</option>
+    </select>
+  </span>
+  <span class="ctl" id="rawctl">x
+    <select id="rawx"></select> y <select id="rawy"></select>
+    <label><input type="checkbox" id="rawlog" checked> log</label>
+  </span>
+  <span class="ctl"><button id="reload">reload</button></span>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="summary" hidden></div>
+  <div id="plot" hidden></div>
+  <div id="caption"></div>
+  <div id="error" hidden></div>
+</main>
+
+<script>
+"use strict";
+
+const US = 1e3, S = 1e9;
+const $ = id => document.getElementById(id);
+
+const VIEWS = {
+  summary: { label: "summary", draw: viewSummary, caption: "Latencies in microseconds. p99 and p99.9 are read from the samples, with negative latencies counted as 0, as stat does." },
+  ccdf: { label: "CCDF", draw: viewCcdf, caption: "Fraction of probes with a latency above x; the whole tail of each stream in one line. Solid: source to sink, dashed: sink to source." },
+  phase: { label: "latency / phase", draw: viewPhase, caption: "Latency against where in the cycle the probe left. Shaded: the window, inferred from the probes tagged inside. Circles: source to sink, diamonds: sink to source, open: left outside the window, crosses: arrived in a later cycle." },
+  gate: { label: "arrival / phase", draw: viewGate, caption: "Where in the cycle a probe arrived against where it left. A probe that got straight through lies on the diagonal; one held by a gate lies on a horizontal line at the opening. Crosses arrived in a later cycle." },
+  time: { label: "over time", draw: viewTime, caption: "Every sample, with p99 per 1/200 of the run drawn over them. With both flows, a dotted line adds the two directions' means: clock offset cancels out of it, so drift in the directions that is absent from the sum is in the clocks." },
+  raw: { label: "raw", draw: viewRaw, caption: "Any column against any other; a log axis leaves out values of zero or below. Circles: source to sink, diamonds: sink to source, open: left outside the window, crosses: arrived in a later cycle." },
+};
+
+const COLS = {
+  t: { label: "time (s)", get: r => r.t },
+  seq: { label: "seq", get: r => r.seq },
+  lat: { label: "latency (us)", get: r => r.lat == null ? null : r.lat / US },
+  txp: { label: "tx phase (us)", get: r => r.txp == null ? null : r.txp / US },
+  rxp: { label: "rx phase (us)", get: r => r.rxp == null ? null : r.rxp / US },
+  cycles: { label: "cycles", get: r => r.cycles },
+  corr: { label: "correction (us)", get: r => r.corr / 65536 / US },
+};
+
+/* Plotly draws through WebGL where there is one; SVG is slower with
+ * many points but works everywhere. */
+const SCATTER = (() => {
+	try {
+		return document.createElement("canvas").getContext("webgl") ? "scattergl" : "scatter";
+	} catch (e) {
+		return "scatter";
+	}
+})();
+
+let data = null;		/* { rows, streams, sched } */
+let view = "summary";
+let file = "";			/* the recording shown */
+
+/* Values are read from the CSS tokens, so the plots follow the theme. */
+function css(name)
+{
+	return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function color(stream)
+{
+	return css("--series-" + (data.streams.indexOf(stream) % 8 + 1));
+}
+
+function dash(flow)
+{
+	return flow === "rev" ? "dash" : "solid";
+}
+
+/* A plain CSV; ptping refuses names with commas, so there is no quoting.
+ * Absolute timestamps exceed 2^53 ns and go through BigInt. */
+function parse(text)
+{
+	const lines = text.split("\n").filter(l => l.length);
+	const col = {};
+	lines[0].split(",").forEach((h, i) => col[h] = i);
+
+	const rows = [];
+	for (let i = 1; i < lines.length; i++) {
+		const f = lines[i].split(",");
+		const num = n => f[col[n]] === "" || f[col[n]] === undefined ? null : Number(f[col[n]]);
+		rows.push({
+			stream: f[col.stream], flow: f[col.flow], seq: num("seq"),
+			tx: f[col.tx_ns] ? BigInt(f[col.tx_ns]) : null,
+			rx: f[col.rx_ns] ? BigInt(f[col.rx_ns]) : null,
+			corr: num("correction") || 0, lat: num("latency_ns"),
+			txp: num("tx_phase_ns"), rxp: num("rx_phase_ns"),
+			cycles: num("cycles"), tag: f[col.tag] || "",
+		});
+	}
+
+	let origin = null;
+	for (const r of rows) {
+		const ts = r.tx ?? r.rx;
+		if (ts != null && (origin == null || ts < origin))
+			origin = ts;
+	}
+	for (const r of rows) {
+		const ts = r.tx ?? r.rx;
+		r.t = ts == null ? null : Number(ts - origin) / S;
+	}
+
+	return {
+		rows,
+		streams: [...new Set(rows.map(r => r.stream))],
+		sched: rows.some(r => r.txp != null),
+	};
+}
+
+function selected()
+{
+	const flow = $("flow").value, tag = $("tag").value;
+
+	return data.rows.filter(r => (!flow || r.flow === flow) && (!tag || r.tag === tag));
+}
+
+/* Rows grouped by stream and flow, in stream order. */
+function series(rows)
+{
+	const out = new Map();
+
+	for (const r of rows) {
+		const key = r.stream + " " + r.flow;
+		if (!out.has(key))
+			out.set(key, { stream: r.stream, flow: r.flow, name: key, rows: [] });
+		out.get(key).rows.push(r);
+	}
+
+	return [...out.values()].sort((a, b) =>
+		data.streams.indexOf(a.stream) - data.streams.indexOf(b.stream) || a.flow.localeCompare(b.flow));
+}
+
+/* Latencies in microseconds, sorted, of the rows that have one. */
+function lats(rows)
+{
+	return rows.filter(r => r.lat != null).map(r => r.lat / US).sort((a, b) => a - b);
+}
+
+function mean(arr)
+{
+	return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+}
+
+function percentile(sorted, p)
+{
+	return sorted.length ? sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)] : null;
+}
+
+/* The largest value of get over the rows; a loop, since a spread of
+ * every row overflows the stack. */
+function max(rows, get)
+{
+	let m = 0;
+
+	for (const r of rows)
+		m = Math.max(m, get(r) ?? 0);
+	return m;
+}
+
+/* Draw traces with the themed layout; extra may override anything
+ * in it, with xaxis and yaxis merged into the base axes. */
+function plot(traces, xtitle, ytitle, extra = {})
+{
+	const axis = {
+		gridcolor: css("--grid"), zerolinecolor: css("--axis"), linecolor: css("--axis"),
+		tickcolor: css("--axis"), tickfont: { color: css("--muted") },
+		title: { font: { color: css("--ink-2") } },
+	};
+	const layout = Object.assign({
+		paper_bgcolor: css("--surface"), plot_bgcolor: css("--surface"),
+		font: { family: "system-ui, -apple-system, 'Segoe UI', sans-serif", color: css("--ink"), size: 13 },
+		margin: { l: 70, r: 20, t: 20, b: 60 },
+		hovermode: "closest", dragmode: "zoom",
+		legend: { bgcolor: "rgba(0,0,0,0)", font: { color: css("--ink-2") } },
+	}, extra, {
+		xaxis: Object.assign({}, axis, { title: { text: xtitle, font: axis.title.font } }, extra.xaxis),
+		yaxis: Object.assign({}, axis, { title: { text: ytitle, font: axis.title.font } }, extra.yaxis),
+	});
+
+	Plotly.react("plot", traces, layout, { responsive: true, displaylogo: false });
+}
+
+/* Markers in the stream's colour; the flow sets the shape, a probe
+ * that left outside the window is drawn open, and one that arrived in
+ * a later cycle as a cross. style overrides any of it. */
+function marker(stream, rows, style)
+{
+	return Object.assign({
+		color: color(stream), size: 7, opacity: 0.75,
+		symbol: rows.map(r => (r.cycles ? (r.flow === "rev" ? "cross" : "x") : r.flow === "rev" ? "diamond" : "circle")
+				      + (r.tag === "outside" ? "-open" : "")),
+		line: { width: 1.5, color: color(stream) },
+	}, style);
+}
+
+/* Scatter of two columns, one trace per stream and flow. */
+function scatter(rows, xcol, ycol, style)
+{
+	const getx = COLS[xcol].get, gety = COLS[ycol].get;
+
+	return series(rows).map(s => {
+		const pts = [], x = [], y = [], customdata = [];
+
+		for (const r of s.rows) {
+			const xv = getx(r), yv = gety(r);
+
+			if (xv == null || yv == null)
+				continue;
+			pts.push(r);
+			x.push(xv);
+			y.push(yv);
+			customdata.push([r.seq, r.lat == null ? "lost" : (r.lat / US).toFixed(3) + " us", r.tag, r.cycles ?? ""]);
+		}
+
+		return {
+			type: SCATTER, mode: "markers", name: s.name, legendgroup: s.stream,
+			x, y, customdata,
+			hovertemplate: s.name + " #%{customdata[0]}<br>" + COLS[xcol].label + " %{x:.3f}<br>"
+				+ COLS[ycol].label + " %{y:.3f}<br>latency %{customdata[1]} %{customdata[2]} %{customdata[3]}<extra></extra>",
+			marker: marker(s.stream, style && style.symbol ? [] : pts, style),
+		};
+	});
+}
+
+function viewSummary(rows)
+{
+	const tags = data.sched ? ["", "inside", "outside"] : [""];
+	let html = "<table><tr><th class=l></th><th class=l>stream</th><th class=l>flow</th>"
+		+ (data.sched ? "<th class=l>tag</th>" : "")
+		+ "<th>sent</th><th>received</th><th>lost</th><th>no tx</th>"
+		+ "<th>min</th><th>avg</th><th>p99</th><th>p99.9</th><th>max</th></tr>";
+
+	for (const s of series(rows)) {
+		for (const tag of tags) {
+			const rs = tag ? s.rows.filter(r => r.tag === tag) : s.rows;
+			const l = lats(rs);
+			const clamped = l.map(v => Math.max(v, 0));
+			const us = v => v == null ? "-" : v.toFixed(3);
+
+			html += `<tr><td class=sw><i style="background:${color(s.stream)}"></i></td>`
+				+ `<td class=l>${s.stream}</td><td class=l>${s.flow}</td>`
+				+ (data.sched ? `<td class=l>${tag || "all"}</td>` : "")
+				+ `<td>${rs.length}</td><td>${l.length}</td>`
+				+ `<td>${rs.filter(r => r.rx == null).length}</td>`
+				+ `<td>${rs.filter(r => r.tx == null).length}</td>`
+				+ `<td>${us(l[0])}</td><td>${us(mean(l))}</td>`
+				+ `<td>${us(percentile(clamped, 0.99))}</td><td>${us(percentile(clamped, 0.999))}</td>`
+				+ `<td>${us(l[l.length - 1])}</td></tr>`;
+		}
+	}
+
+	$("summary").innerHTML = html + "</table>";
+}
+
+function viewCcdf(rows)
+{
+	let nmax = 1;
+	const traces = series(rows).map(s => {
+		const l = lats(s.rows), n = l.length;
+
+		nmax = Math.max(nmax, n);
+		return {
+			type: SCATTER, mode: "lines", name: s.name, legendgroup: s.stream,
+			x: l, y: l.map((_, i) => (n - i) / n),
+			line: { color: color(s.stream), width: 2, dash: dash(s.flow) },
+			hovertemplate: s.name + "<br>%{y:.3%} above %{x:.3f} us<extra></extra>",
+		};
+	});
+
+	plot(traces, "latency (us)", "fraction of probes above", {
+		yaxis: { type: "log", dtick: 1, range: [Math.log10(1 / nmax) - 0.2, 0.05], tickformat: ".1%" },
+	});
+}
+
+/* The window of each stream, as the span of the probes tagged inside. */
+function windows(rows)
+{
+	const win = new Map();
+
+	for (const r of rows) {
+		if (r.tag !== "inside" || r.txp == null)
+			continue;
+		const w = win.get(r.stream) || { lo: Infinity, hi: -Infinity };
+		w.lo = Math.min(w.lo, r.txp / US);
+		w.hi = Math.max(w.hi, r.txp / US);
+		win.set(r.stream, w);
+	}
+
+	return [...win].map(([stream, w]) => ({
+		type: "rect", xref: "x", yref: "paper", x0: w.lo, x1: w.hi, y0: 0, y1: 1,
+		fillcolor: color(stream), opacity: 0.08, line: { width: 0 }, layer: "below",
+	}));
+}
+
+function viewPhase(rows)
+{
+	plot(scatter(rows, "txp", "lat"), "tx phase (us)", "latency (us)", { shapes: windows(rows) });
+}
+
+function viewGate(rows)
+{
+	const end = Math.max(max(rows, COLS.txp.get), max(rows, COLS.rxp.get));
+
+	plot(scatter(rows, "txp", "rxp"), "tx phase (us)", "rx phase (us)", {
+		yaxis: { scaleanchor: "x" },
+		shapes: windows(rows).concat([{
+			type: "line", x0: 0, y0: 0, x1: end, y1: end,
+			line: { color: css("--axis"), width: 1 }, layer: "below",
+		}]),
+	});
+}
+
+function viewTime(rows)
+{
+	const BINS = 200;
+	const width = (max(rows, COLS.t.get) || 1) / BINS;
+	const traces = scatter(rows, "t", "lat", { size: 4, opacity: 0.35, symbol: "circle" });
+	const means = new Map();	/* stream -> { fwd: [], rev: [] } per bin */
+
+	traces.forEach(tr => tr.showlegend = false);
+
+	for (const s of series(rows)) {
+		const bins = Array.from({ length: BINS }, () => []);
+
+		for (const r of s.rows) {
+			if (r.lat != null)
+				bins[Math.min(BINS - 1, Math.floor(r.t / width))].push(r.lat / US);
+		}
+		const x = [], y = [], m = [];
+		bins.forEach((b, i) => {
+			m.push(mean(b));
+			if (b.length) {
+				x.push((i + 0.5) * width);
+				y.push(percentile(b.sort((a, c) => a - c), 0.99));
+			}
+		});
+		if (!means.has(s.stream))
+			means.set(s.stream, {});
+		means.get(s.stream)[s.flow] = m;
+
+		traces.push({
+			type: SCATTER, mode: "lines", name: s.name + " p99", legendgroup: s.stream,
+			x, y, line: { color: color(s.stream), width: 2, dash: dash(s.flow) },
+			hovertemplate: s.name + " p99 %{y:.3f} us at %{x:.1f} s<extra></extra>",
+		});
+	}
+
+	for (const [stream, m] of means) {
+		if (!m.fwd || !m.rev)
+			continue;
+		const x = [], y = [];
+		m.fwd.forEach((f, i) => {
+			if (f != null && m.rev[i] != null) {
+				x.push((i + 0.5) * width);
+				y.push(f + m.rev[i]);
+			}
+		});
+		traces.push({
+			type: SCATTER, mode: "lines", name: stream + " fwd+rev mean", legendgroup: stream,
+			x, y, line: { color: color(stream), width: 2, dash: "dot" },
+			hovertemplate: stream + " fwd+rev %{y:.3f} us at %{x:.1f} s<extra></extra>",
+		});
+	}
+
+	plot(traces, "time (s)", "latency (us)");
+}
+
+function viewRaw(rows)
+{
+	const xcol = $("rawx").value, ycol = $("rawy").value;
+
+	plot(scatter(rows, xcol, ycol), COLS[xcol].label, COLS[ycol].label, {
+		yaxis: { type: $("rawlog").checked ? "log" : "linear" },
+	});
+}
+
+function render()
+{
+	const summary = view === "summary";
+
+	document.querySelectorAll("#views button").forEach(b => b.setAttribute("aria-current", b.dataset.view === view));
+	$("rawctl").hidden = view !== "raw";
+	$("caption").textContent = VIEWS[view].caption;
+	if (!data)
+		return;
+
+	$("tagctl").hidden = !data.sched;
+	$("summary").hidden = !summary;
+	$("plot").hidden = summary;
+	VIEWS[view].draw(selected());
+}
+
+async function get(url)
+{
+	const res = await fetch(url, { cache: "no-store" });
+
+	if (!res.ok)
+		throw new Error(url + ": " + res.status + " " + res.statusText);
+	return res;
+}
+
+/* The directory listing, and the chosen file, which stays chosen
+ * across reloads for as long as it exists. */
+async function load()
+{
+	const sel = $("file");
+
+	try {
+		const files = await (await get("/files")).json();
+		if (!files.some(f => f.name === file))
+			file = files.length ? files[files.length - 1].name : "";
+
+		sel.innerHTML = "";
+		for (const f of files)
+			sel.add(new Option(`${f.name} (${(f.size / 1024).toFixed(0)} kB)`, f.name, false, f.name === file));
+		$("filectl").hidden = files.length < 2;
+		if (!file)
+			throw new Error("no recordings");
+
+		data = parse(await (await get("/data/" + encodeURIComponent(file))).text());
+		$("error").hidden = true;
+	} catch (e) {
+		data = null;
+		$("error").hidden = false;
+		$("error").textContent = "cannot load: " + e.message;
+		$("status").textContent = "";
+		$("summary").hidden = $("plot").hidden = true;
+		return;
+	}
+
+	document.title = file + " - ptping view";
+	$("status").textContent = `${file}: ${data.rows.length} samples, ${data.streams.length} stream${data.streams.length === 1 ? "" : "s"}, `
+		+ `loaded ${new Date().toLocaleTimeString()}`;
+	render();
+}
+
+/* The view and the file are in the URL, so they can be bookmarked:
+ * #view=phase&file=run1.csv */
+function go(change)
+{
+	location.hash = new URLSearchParams({ view, file, ...change }).toString();
+}
+
+function onhash()
+{
+	const params = new URLSearchParams(location.hash.slice(1));
+	const name = params.get("file");
+
+	if (VIEWS[params.get("view")])
+		view = params.get("view");
+	if (name && name !== file) {
+		file = name;
+		data = null;
+	}
+	if (data)
+		render();
+	else
+		load();
+}
+
+function init()
+{
+	const keys = Object.keys(VIEWS);
+
+	for (const [key, v] of Object.entries(VIEWS)) {
+		const b = document.createElement("button");
+		b.textContent = v.label;
+		b.dataset.view = key;
+		b.onclick = () => go({ view: key });
+		$("views").appendChild(b);
+	}
+	for (const id of ["rawx", "rawy"]) {
+		for (const [key, c] of Object.entries(COLS))
+			$(id).add(new Option(c.label, key));
+		$(id).onchange = render;
+	}
+	$("rawx").value = "seq";
+	$("rawy").value = "lat";
+	$("rawlog").onchange = render;
+	$("flow").onchange = render;
+	$("tag").onchange = render;
+	$("reload").onclick = load;
+	$("file").onchange = e => go({ file: e.target.value });
+	window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+	document.addEventListener("keydown", e => {
+		const i = keys.indexOf(view);
+
+		if (e.key === "ArrowRight" || e.key === "ArrowLeft")
+			go({ view: keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length] });
+		else if (e.key === "r")
+			load();
+	});
+	window.onhashchange = onhash;
+
+	render();
+	onhash();
+}
+
+init();
+</script>
+</body>
+</html>

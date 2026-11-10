@@ -37,4 +37,5 @@ test_sched_test_SOURCES = test/sched-test.c test/test.h
 test_stats_test_SOURCES = test/stats-test.c test/test.h
 test_ts_test_SOURCES = test/ts-test.c test/test.h
 
-EXTRA_DIST = autogen.sh README.md doc/architecture.md test/e2e.sh
+EXTRA_DIST = autogen.sh README.md doc/architecture.md test/e2e.sh \
+	contrib/ptping-view contrib/ptping-view.html

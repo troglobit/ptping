@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Browse ptping recordings in a web browser.
+
+    ptping-view run1.csv
+    ptping-view recordings/
+
+serves every CSV in a directory, or in the directory of the given
+file, together with a page that plots them, and opens the page in a
+browser on the given file. The page reads the directory and the
+chosen CSV afresh on every reload, so new recordings show up and one
+still being written can be followed. Only the standard library is
+needed; the page itself loads Plotly from a CDN.
+"""
+
+import argparse
+import http.server
+import json
+import os
+import sys
+import threading
+import urllib.parse
+import webbrowser
+
+HTML = os.path.join(os.path.dirname(os.path.realpath(__file__)), "ptping-view.html")
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    directory = None
+    verbose = False
+
+    def files(self):
+        out = []
+        for n in sorted(os.listdir(self.directory)):
+            if not n.endswith(".csv"):
+                continue
+            try:
+                out.append({"name": n, "size": os.path.getsize(os.path.join(self.directory, n))})
+            except OSError:
+                pass
+        return out
+
+    def do_GET(self):
+        path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+
+        if path in ("/", "/index.html"):
+            self.send_file(HTML, "text/html; charset=utf-8")
+        elif path == "/files":
+            body = json.dumps(self.files()).encode()
+            self.send_headers(len(body), "application/json")
+            self.wfile.write(body)
+        elif path.startswith("/data/"):
+            name = path[len("/data/"):]
+            full = os.path.join(self.directory, name)
+            if "/" in name or not name.endswith(".csv") or not os.path.isfile(full):
+                self.send_error(404)
+                return
+            self.send_file(full, "text/csv; charset=utf-8")
+        else:
+            self.send_error(404)
+
+    def send_file(self, path, ctype):
+        try:
+            f = open(path, "rb")
+        except OSError as e:
+            self.send_error(500, str(e))
+            return
+
+        # The file may grow while it is sent; send what was promised.
+        with f:
+            left = os.fstat(f.fileno()).st_size
+            self.send_headers(left, ctype)
+            while left:
+                chunk = f.read(min(left, 1 << 20))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                left -= len(chunk)
+
+    def send_headers(self, length, ctype):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def log_message(self, fmt, *args):
+        if self.verbose:
+            super().log_message(fmt, *args)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Browse ptping recordings.")
+    ap.add_argument("path", help="a file written by ptping record, or a directory of them")
+    ap.add_argument("-b", "--bind", default="127.0.0.1",
+                    help="address to listen on (default: 127.0.0.1)")
+    ap.add_argument("-p", "--port", type=int, default=8319,
+                    help="port to listen on (default: 8319)")
+    ap.add_argument("-n", "--no-browser", action="store_true",
+                    help="only serve; do not open a browser")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="log every request")
+    args = ap.parse_args()
+
+    name = ""
+    if os.path.isdir(args.path):
+        Handler.directory = args.path
+    elif os.path.isfile(args.path):
+        Handler.directory, name = os.path.split(os.path.abspath(args.path))
+    else:
+        sys.exit(f"{args.path}: no such file or directory")
+
+    Handler.verbose = args.verbose
+    srv = http.server.ThreadingHTTPServer((args.bind, args.port), Handler)
+    url = f"http://{args.bind}:{srv.server_port}/"
+    if name:
+        url += "#" + urllib.parse.urlencode({"file": name})
+    print(f"serving {Handler.directory} at {url}", file=sys.stderr)
+
+    if not args.no_browser:
+        threading.Timer(0.2, webbrowser.open, (url,)).start()
+
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

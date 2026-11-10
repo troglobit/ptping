@@ -149,6 +149,21 @@ each:
 `stat` gives every stream its own lines, and `record` names the
 stream in the first column.
 
+### Viewing a recording
+
+`contrib/ptping-view` plots recordings in a browser:
+
+    user@start:~# contrib/ptping-view run1.csv
+    user@start:~# contrib/ptping-view recordings/
+
+It offers every CSV in the directory, opening on the given file if
+there is one. The views are a summary table like `stat`'s, the
+latency CCDF of each stream, latency and arrival time against the
+position in the cycle, latency over time, and a raw scatter plot of
+any two columns. Reloading the page reads the file again, so a
+recording still being written can be followed. The script needs only
+Python 3; the page loads Plotly from a CDN.
+
 
 Usage
 -----
